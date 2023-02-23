@@ -24,7 +24,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 ####   GLOBAL OPTIONS   ###https://stackoverflow.com/questions/15201064/cmake-conditional-preprocessor-define-on-code
 set(HSDF_CUDA_ARCHITECTURES "" CACHE STRING "Build HashSDF for a specific GPU architecture.")
-option(HSDF_WITH_GL "Compile with GL" OFF) #sometimes when we run headless we would like to disable all the opengl stuff because we are not creating the Viewer and therefore do not initialize a OpenGL context and therefore the InstantNGP class cannot create opengl textures or anything like that 
+option(HSDF_WITH_GL "Compile with GL" OFF) #sometimes when we run headless we would like to disable all the opengl stuff because we are not creating the Viewer and therefore do not initialize a OpenGL context and therefore the HashSDF class cannot create opengl textures or anything like that 
 
 
 
@@ -130,7 +130,7 @@ function(HSDF_AUTODETECT_CUDA_ARCHITECTURES OUT_VARIABLE)
 	endif()
 endfunction()
 
-set(CMAKE_CUDA_STANDARD 14)
+set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_EXTENSIONS OFF)
 set(CUDA_LINK_LIBRARIES_KEYWORD PUBLIC)
@@ -238,13 +238,15 @@ list(APPEND CUDA_NVCC_FLAGS "-Xcudafe=--diag_suppress=20236")
 ###############################################################################
 
 set(HSDF_SOURCES
-    # ${CMAKE_SOURCE_DIR}/src/InstantNGP.cu  
+    ${CMAKE_SOURCE_DIR}/src/HashSDF.cu  
     ${CMAKE_SOURCE_DIR}/src/Sphere.cu  
     # ${CMAKE_SOURCE_DIR}/src/VoxelGrid.cu  
-    # ${CMAKE_SOURCE_DIR}/src/OccupancyGrid.cu  
-    # ${CMAKE_SOURCE_DIR}/src/RaySampler.cu  
+    ${CMAKE_SOURCE_DIR}/src/OccupancyGrid.cu  
+    ${CMAKE_SOURCE_DIR}/src/RaySampler.cu  
     ${CMAKE_SOURCE_DIR}/src/VolumeRendering.cu  
+    ${CMAKE_SOURCE_DIR}/src/RaySamplesPacked.cu  
     ${CMAKE_SOURCE_DIR}/src/NGPGui.cxx
+    ${CMAKE_SOURCE_DIR}/src/TrainParams.cxx
 )
 
 
