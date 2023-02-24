@@ -115,37 +115,79 @@ def sdf_loss_spheres(offsurface_points, offsurface_sdf, offsurface_sdf_gradients
 
 
 #sdf multiplier is preferred to be <1 so that we take more conservative steps and don't overshoot the surface
-def sphere_trace(nr_sphere_traces, points, ray_origins, ray_dirs, model, return_gradients, sdf_multiplier, sdf_converged_tresh):
-    sdf_gradients=None
+def sphere_trace(nr_sphere_traces, ray_origins, ray_dirs, model, return_gradients, sdf_multiplier, sdf_converged_tresh, occupancy_grid=None):
+
+    #get the entry point of the ray to the aabb. if an occupancy grid is available, use that one instead
+    has_occupancy=occupancy_grid is not None
+    if has_occupancy:
+        ray_samples_packed=occupancy_grid.compute_first_sample_start_of_occupied_regions(ray_origins, ray_dirs, ray_t_entry, ray_t_exit)
+        ray_samples_packed=ray_samples_packed.get_valid_samples() #get only the rays that end up shooting through some occupied region
+        pos=ray_samples_packed.samples_pos
+        dirs=ray_samples_packed.samples_dirs
+        #move position slightyl inside the voxel
+        voxel_size=1.0/occupancy_grid.get_nr_voxels_per_dim()
+        pos=pos+dirs*voxel_size*0.5
+    else:
+        ray_points_entry, ray_t_entry, ray_points_exit, ray_t_exit, is_hit_valid=model.boundary_primitive.ray_intersection(ray_origins, ray_dirs)
+        pos=ray_points_entry
+        dirs=ray_dirs
+    pts=pos.clone()
+    
+    ray_converged_flag=torch.zeros_like(pos)[:,0:1].bool() #all rays start as unconverged
+
+    
+
 
     for i in range(nr_sphere_traces):
-        sdf, feat =model(points, model.last_iter_nr)
-        movement=sdf*sdf_multiplier
-        # if sdf_clamp!=None:
-            # movement=torch.clamp(movement, -sdf_clamp, sdf_clamp)
-        points=points+movement*ray_dirs
+
+        #get the positions that are converged
+        select_cur_iter=torch.logical_not(ray_converged_flag)
+        pos_unconverged=pts[ select_cur_iter.repeat(1,3) ].view(-1,3)
+        dirs_unconverged=dirs[ select_cur_iter.repeat(1,3) ].view(-1,3)
+        if pos_unconverged.shape[0]==0:  #all points are converged
+            break;
+
+        # print("iter ", i, " pos_unconverged ", pos_unconverged.shape)
+        #sphere trace
+        sdf, feat =model(pos_unconverged, model.last_iter_nr)
+        pos_unconverged=pos_unconverged+dirs_unconverged*sdf*sdf_multiplier
+
+
+        #get the if points are now converged
+        newly_converged_flag=sdf.abs()<sdf_converged_tresh
+        ray_converged_flag[select_cur_iter]=torch.logical_or(ray_converged_flag[select_cur_iter], newly_converged_flag.view(-1) )
+        ray_converged_flag=ray_converged_flag.view(-1,1)
+
+
+        if has_occupancy:
+            #check if the new positions are in unnocupied space and if they are move them towards the next occupied voxel
+            pos_unconverged, is_within_grid_bounds=occupancy_grid.advance_sample_to_next_occupied_voxel(dirs_unconverged, pos_unconverged)
+        else:
+            is_within_grid_bounds= model.boundary_primitive.check_point_inside_primitive(pos_unconverged)
+        ray_converged_flag[select_cur_iter]=torch.logical_or(ray_converged_flag[select_cur_iter], torch.logical_not(is_within_grid_bounds.view(-1)) )
+        ray_converged_flag=ray_converged_flag.view(-1,1)
+
+        #update the new points
+        pts[select_cur_iter.repeat(1,3)]=pos_unconverged.view(-1)
+
+
+        
 
     #one more tace to get also the normals and the SDF at this end point
     if return_gradients:
         with torch.set_grad_enabled(True):
-            sdf, sdf_gradients, feat =model.get_sdf_and_gradient(points.detach(), model.last_iter_nr)
+            # sdf, sdf_gradients, feat =model.get_sdf_and_gradient(points.detach(), model.last_iter_nr)
+            sdf, sdf_gradients, feat =model.get_sdf_and_gradient(pts, model.last_iter_nr)
+            sdf_gradients=sdf_gradients.detach()
     else:
-        sdf=model(points, model.iter_nr)
+        sdf=model(pts, model.last_iter_nr)
+        sdf_gradients=None
 
     #get also a t value for the ray
-    t_val=(points-ray_origins).norm(dim=-1, keepdim=True)
+    t_val=(pts-ray_origins).norm(dim=-1, keepdim=True)
 
-    # point_all=points
-    # sdf_gradients_all=sdf_gradients
 
-    # #remove points which still have an sdf
-    # is_sdf_converged = (sdf<0.01)*1.0
-    # points_converged=points*is_sdf_converged
-    # if return_gradients:
-    #     sdf_gradients_converged=sdf_gradients*is_sdf_converged
-    
-    # return points_converged, sdf_gradients_converged, point_all, sdf_gradients_all, is_sdf_converged, sdf
-    return points, sdf, sdf_gradients, t_val
+    return pts, sdf, sdf_gradients, t_val
 
 #if the sdf is outside of a threshold, set the ray_end and gradient to zero
 def filter_unconverged_points(points, sdf, sdf_gradients):
