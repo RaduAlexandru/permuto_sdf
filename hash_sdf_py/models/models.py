@@ -2648,20 +2648,12 @@ class SDF(torch.nn.Module):
         super(SDF, self).__init__()
 
         self.boundary_primitive=boundary_primitive
-
-        
         self.geom_feat_size_out=geom_feat_size_out
 
 
-        # self.pick_rand_rows= RandRowPicker()
-        # self.pick_rand_pixels= RandPixelPicker(low_discrepancy=False) #do NOT use the discrepancy for now, it seems to align some of the rays to some directions so maybe it's not that good of an idea
-        # self.row_sampler=RowSampler()
-        # self.create_rays=CreateRaysModule()
-      
-
         #create encoding
         pos_dim=3
-        capacity=262144 #2pow18
+        capacity=pow(2,18) #2pow18
         nr_levels=24 
         nr_feat_per_level=2 
         coarsest_scale=1.0 ##we tested that at sigma of 4 is when we slice form just one lattice 
@@ -2690,10 +2682,13 @@ class SDF(torch.nn.Module):
 
         self.c2f=permuto_enc.Coarse2Fine(nr_levels)
         self.nr_iters_for_c2f=nr_iters_for_c2f
+        self.last_nr_iters_used=None
 
     def forward(self, points, iter_nr):
 
         assert points.shape[1] == 3, "points should be nx3"
+
+        self.last_iter_nr=iter_nr
 
        
         window=self.c2f( map_range_val(iter_nr, 0.0, self.nr_iters_for_c2f, 0.3, 1.0   ) )

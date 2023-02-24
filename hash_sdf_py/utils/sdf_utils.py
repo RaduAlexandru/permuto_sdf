@@ -115,22 +115,22 @@ def sdf_loss_spheres(offsurface_points, offsurface_sdf, offsurface_sdf_gradients
 
 
 #sdf multiplier is preferred to be <1 so that we take more conservative steps and don't overshoot the surface
-def sphere_trace(nr_sphere_traces, points, ray_origins, ray_dirs, model, iter_nr, sdf_multiplier, return_gradients, sdf_clamp=None):
+def sphere_trace(nr_sphere_traces, points, ray_origins, ray_dirs, model, return_gradients, sdf_multiplier, sdf_converged_tresh):
     sdf_gradients=None
 
     for i in range(nr_sphere_traces):
-        sdf, feat =model(points, iter_nr)
+        sdf, feat =model(points, model.last_iter_nr)
         movement=sdf*sdf_multiplier
-        if sdf_clamp!=None:
-            movement=torch.clamp(movement, -sdf_clamp, sdf_clamp)
+        # if sdf_clamp!=None:
+            # movement=torch.clamp(movement, -sdf_clamp, sdf_clamp)
         points=points+movement*ray_dirs
 
     #one more tace to get also the normals and the SDF at this end point
     if return_gradients:
         with torch.set_grad_enabled(True):
-            sdf, sdf_gradients, feat =model.get_sdf_and_gradient(points.detach(), iter_nr)
+            sdf, sdf_gradients, feat =model.get_sdf_and_gradient(points.detach(), model.last_iter_nr)
     else:
-        sdf=model(points, iter_nr)
+        sdf=model(points, model.iter_nr)
 
     #get also a t value for the ray
     t_val=(points-ray_origins).norm(dim=-1, keepdim=True)
