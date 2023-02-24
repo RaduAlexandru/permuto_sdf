@@ -86,15 +86,15 @@ train_params=TrainParams.create(config_path)
 
 #     return colors_t
 
-# def color_by_occupancy_from_occupancy_grid(occupancy_grid):
-#     #color by grid value
-#     colors_t=occupancy_grid.get_grid_occupancy().float()
-#     colors_t=torch.clamp(colors_t,max=1.0)
-#     #repeat and assign color
-#     colors_t=colors_t.view(-1,1).repeat(1,3)
-#     colors_t=colors_t.float()
+def color_by_occupancy_from_occupancy_grid(occupancy_grid):
+    #color by grid value
+    colors_t=occupancy_grid.get_grid_occupancy().float()
+    colors_t=torch.clamp(colors_t,max=1.0)
+    #repeat and assign color
+    colors_t=colors_t.view(-1,1).repeat(1,3)
+    colors_t=colors_t.float()
 
-#     return colors_t
+    return colors_t
 
 # def color_by_density(density):
 #     #color by grid value
@@ -156,8 +156,9 @@ def run():
 
     #get the mesh for which we will compute the sdf
     # mesh=Mesh("/media/rosu/Data/data/phenorob/days_on_field/2021_06_02_just_15/15_processed/block_0/colmap_data/cloud_dense.ply")
-    mesh=Mesh("/media/rosu/Data/data/3d_objs/artec_3d/statue-dragonfly-tamer-stl/Statue Dragonfly tamer_stl.stl")
+    # mesh=Mesh("/media/rosu/Data/data/3d_objs/artec_3d/statue-dragonfly-tamer-stl/Statue Dragonfly tamer_stl.stl")
     # mesh=Mesh("/media/rosu/Data/data/3d_objs/my_mini_factory/babygroot-pot-03-fixed.stl")
+    mesh=Mesh("/media/rosu/Data/phd/c_ws/src/easy_pbr/data/scan_the_world/masterpiece-goliath-ii.stl")
     # mesh=Mesh("/media/rosu/Data/data/3d_objs/scan_the_world/smk16-kas115-pieta-michelangelo.stl")
     # mesh=Mesh("/media/rosu/Data/data/3d_objs/artec_3d/flower-obj_0/Flower.obj/Flower.obj")
     # mesh=Mesh("/media/rosu/Data/data/3d_objs/artec_3d/dragon_and_phoenix_statuette-stl/Dragon and phoenix statuette.stl/Dragon and phoenix statuette.stl")
@@ -166,6 +167,7 @@ def run():
     # mesh=Mesh("/media/rosu/Data/data/3d_objs/plants/corn/10439_Corn_Field_v1_L3.123c80b91965-ab50-4dd0-8508-3847dcd0c84e/10439_Corn_Field_v1_max2010_it2.obj")
     # mesh.upsample(3,True)
     mesh.model_matrix.rotate_axis_angle([1,0,0],-90)
+    mesh.model_matrix.rotate_axis_angle([0,1,0],-120)
     mesh.apply_model_matrix_to_cpu(True)
     mesh.normalize_size()
     mesh.normalize_position()
@@ -246,6 +248,8 @@ def run():
     box.m_vis.m_show_wireframe=True
     Scene.show(box,"box")
 
+    percentage_occupied=1.0
+
     while True:
 
         for phase in phases:
@@ -277,7 +281,7 @@ def run():
 
                                 # #get rgba field for all the centers
                                 # density_field=model.get_only_density( grid_centers, lattice, phase.iter_nr) 
-                                sdf,_,_=model( grid_centers_random, lattice, phase.iter_nr, False) 
+                                sdf,_,=model( grid_centers_random, phase.iter_nr) 
 
                                 # # print("density_field",density_field)
 
@@ -292,9 +296,14 @@ def run():
                                 # mesh_centers.C=tensor2eigen(color_by_density(density_field))
                                 mesh_centers.m_vis.m_show_points=True
                                 mesh_centers.m_vis.set_color_pervertcolor()
-                                Scene.show(mesh_centers,"mesh_centers")
+                                # Scene.show(mesh_centers,"mesh_centers")
 
-                                print("sdf min max is ", sdf.min(), sdf.max())
+                                # print("sdf min max is ", sdf.min(), sdf.max())
+
+                                nr_occupied=occupancy_grid.get_grid_occupancy().float().sum()
+                                nr_voxels=occupancy_grid.get_nr_voxels()
+                                percentage_occupied=nr_occupied/nr_voxels
+                                print("percentage occupied", percentage_occupied)
 
                                 #update the occupancy
                                 # occupancy_grid.update_with_density(density_field, 0.95, 1e-3)
@@ -313,11 +322,19 @@ def run():
                         rand_indices=torch.randint(gt_points.shape[0],(3000*multiplier,))
                         surface_points=torch.index_select( gt_points, dim=0, index=rand_indices) 
                         surface_normals=torch.index_select( gt_normals, dim=0, index=rand_indices) 
-                        offsurface_points=aabb.rand_points_inside(nr_points=30000*multiplier)
+                        offsurface_points=aabb.rand_points_inside(nr_points=int(3000*multiplier))
+                        # print("offsurface_points",offsurface_points.shape)
                         # show_points(offsurface_points,"offsurface_points")
                         # show_points(surface_points,"surface_points")
-
                         points=torch.cat([surface_points, offsurface_points], 0)
+
+                        #get only the occupied points
+                        # points_are_in_occupied_regions=occupancy_grid.check_occupancy(points)
+                        # print("points_are_in_occupied_regions", points_are_in_occupied_regions.shape)
+                        # points=points[points_are_in_occupied_regions.repeat(1,3)].view(-1,3)
+                        # show_points(points,"points")
+
+
                         sdf, sdf_gradients, geom_feat  = model.get_sdf_and_gradient(points, phase.iter_nr)
                         surface_sdf=sdf[:surface_points.shape[0]]
                         surface_sdf_gradients=sdf_gradients[:surface_points.shape[0]]
@@ -367,8 +384,8 @@ def run():
                             # for i in range(model.nr_resolutions):
                             #     params.append( {'params': model.lattice_values_list[i], 'weight_decay': wd_list[i], 'lr': train_params.lr()} )
 
-                            # optimizer = torch.optim.AdamW (params, amsgrad=False,  betas=(0.9, 0.99), eps=1e-15)
-                            optimizer = RAdam(params, betas=(0.9, 0.99), eps=1e-15) #also gets the shingles
+                            optimizer = torch.optim.AdamW (params, amsgrad=False,  betas=(0.9, 0.99), eps=1e-15)
+                            # optimizer = RAdam(params, betas=(0.9, 0.99), eps=1e-15) #also gets the shingles
                             # optimizer = VectorAdam(params, betas=(0.9, 0.99), eps=1e-15, axis=-1) #also gets the shingles
                             # optimizer = Adan(params, eps=1e-15) #also gets the shingles
                             # optimizer = apex.optimizers.FusedAdam(params, adam_w_mode=True) #1.7ms for step instead of 3.4 of the radam optimizer
