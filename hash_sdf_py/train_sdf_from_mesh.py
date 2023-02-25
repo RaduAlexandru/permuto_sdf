@@ -87,7 +87,7 @@ def run():
     model.train(True)
 
     #optimizer
-    optimizer = torch.optim.AdamW (model.parameters(), amsgrad=False,  betas=(0.9, 0.99), eps=1e-15)
+    optimizer = torch.optim.AdamW (model.parameters(), amsgrad=False,  betas=(0.9, 0.99), eps=1e-15, weight_decay=0.0, lr=train_params.lr())
 
     first_time_getting_control=True
 
