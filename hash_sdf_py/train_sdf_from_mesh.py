@@ -58,7 +58,8 @@ def run():
    
 
     #get the mesh for which we will compute the sdf
-    mesh=Mesh("/media/rosu/Data/phd/c_ws/src/easy_pbr/data/scan_the_world/masterpiece-goliath-ii.stl")
+    # mesh=Mesh("/media/rosu/Data/phd/c_ws/src/easy_pbr/data/scan_the_world/masterpiece-goliath-ii.stl")
+    mesh=Mesh(  os.path.join(os.path.dirname(easypbr.__file__),  "data/scan_the_world/masterpiece-goliath-ii.stl" ) )
     mesh.model_matrix.rotate_axis_angle([1,0,0],-90)
     mesh.model_matrix.rotate_axis_angle([0,1,0],-120)
     mesh.apply_model_matrix_to_cpu(True)
@@ -131,8 +132,6 @@ def run():
         cb.before_backward_pass()
         loss.backward()
 
-        grad_clip=20
-        torch.nn.utils.clip_grad_norm(parameters=model.parameters(), max_norm=grad_clip, norm_type=2.0)
 
         cb.after_backward_pass()
         optimizer.step()
