@@ -144,8 +144,8 @@ def run():
                 model.eval()
 
 
-                vis_width=400
-                vis_height=400
+                vis_width=500
+                vis_height=500
                 if first_time_getting_control or ngp_gui.m_control_view:
                     first_time_getting_control=False
                     frame=Frame()
@@ -170,7 +170,8 @@ def run():
                 ray_end_normal_img=tex2img(ray_end_normal_tex)
                 Gui.show(tensor2mat(ray_end_normal_img), "ray_end_normal_img")
 
-
+        if phase.iter_nr%100==0 or phase.iter_nr==1:
+            with torch.set_grad_enabled(False):
                 #show a certain layer of the SDF
                 layer_width=300
                 layer_height=300
