@@ -115,7 +115,7 @@ def sdf_loss_spheres(offsurface_points, offsurface_sdf, offsurface_sdf_gradients
 
 
 #sdf multiplier is preferred to be <1 so that we take more conservative steps and don't overshoot the surface
-def sphere_trace(nr_sphere_traces, ray_origins, ray_dirs, model, return_gradients, sdf_multiplier, sdf_converged_tresh, occupancy_grid=None):
+def sphere_trace(nr_sphere_traces, ray_origins, ray_dirs, model, return_gradients, sdf_multiplier, sdf_converged_tresh, occupancy_grid=None, time_val=None):
 
     #get the entry point of the ray to the aabb. if an occupancy grid is available, use that one instead
     has_occupancy=occupancy_grid is not None
@@ -147,9 +147,15 @@ def sphere_trace(nr_sphere_traces, ray_origins, ray_dirs, model, return_gradient
         if pos_unconverged.shape[0]==0:  #all points are converged
             break;
 
-        # print("iter ", i, " pos_unconverged ", pos_unconverged.shape)
         #sphere trace
-        sdf, feat =model(pos_unconverged, model.last_iter_nr)
+        #if we have a time_val we add it
+        if time_val is not None:
+            time_tensor=torch.empty((pos_unconverged.shape[0],1))
+            time_tensor.fill_(time_val)
+            pos_unconverged_time=torch.cat([pos_unconverged,time_tensor],1)
+            sdf, feat =model(pos_unconverged_time, model.last_iter_nr)
+        else:
+            sdf, feat =model(pos_unconverged, model.last_iter_nr)
         pos_unconverged=pos_unconverged+dirs_unconverged*sdf*sdf_multiplier
 
 
@@ -171,36 +177,46 @@ def sphere_trace(nr_sphere_traces, ray_origins, ray_dirs, model, return_gradient
         pts[select_cur_iter.repeat(1,3)]=pos_unconverged.view(-1)
 
 
-        
+    #if we have a time_val we add it
+    if time_val is not None:
+        time_tensor=torch.empty((pts.shape[0],1))
+        time_tensor.fill_(time_val)
+        pts_with_potential_time=torch.cat([pts,time_tensor],1)
+    else:
+        pts_with_potential_time=pts
+
+     
 
     #one more tace to get also the normals and the SDF at this end point
     if return_gradients:
         with torch.set_grad_enabled(True):
             # sdf, sdf_gradients, feat =model.get_sdf_and_gradient(points.detach(), model.last_iter_nr)
-            sdf, sdf_gradients, feat =model.get_sdf_and_gradient(pts, model.last_iter_nr)
+            sdf, sdf_gradients, feat =model.get_sdf_and_gradient(pts_with_potential_time, model.last_iter_nr)
             sdf_gradients=sdf_gradients.detach()
+            sdf_gradients=sdf_gradients[:,0:3]
     else:
-        sdf=model(pts, model.last_iter_nr)
+        sdf=model(pts_with_potential_time, model.last_iter_nr)
         sdf_gradients=None
 
     #get also a t value for the ray
     t_val=(pts-ray_origins).norm(dim=-1, keepdim=True)
 
+    print("pts end is",pts.shape)
 
     return pts, sdf, sdf_gradients, t_val
 
 #if the sdf is outside of a threshold, set the ray_end and gradient to zero
-def filter_unconverged_points(points, sdf, sdf_gradients):
+def filter_unconverged_points(points, sdf, sdf_gradients, sdf_converged_tresh=0.01):
 
     sdf_gradients_converged=None
 
     #remove points which still have an sdf
-    is_sdf_converged = (sdf<0.01)*1.0
+    is_sdf_converged = (sdf<sdf_converged_tresh)*1.0
     points_converged=points*is_sdf_converged
     if sdf_gradients!=None:
         sdf_gradients_converged=sdf_gradients*is_sdf_converged
 
-    return points_converged, sdf_gradients_converged
+    return points_converged, sdf_gradients_converged, is_sdf_converged
 
 def sample_sdf_in_layer(model, lattice, iter_nr, use_only_dense_grid, layer_size, layer_y_coord):
     layer_width=layer_size

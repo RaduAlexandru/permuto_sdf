@@ -8,7 +8,7 @@ class TensorboardCallback(Callback):
         self.experiment_name=experiment_name
         
 
-    def after_forward_pass(self, phase, loss, loss_rgb, loss_sdf_surface_area, loss_sdf_grad, loss_eikonal, loss_curvature, neus_variance_mean, lr, **kwargs):
+    def after_forward_pass(self, phase, loss=0, loss_rgb=0, loss_sdf_surface_area=0, loss_sdf_grad=0, loss_eikonal=0, loss_curvature=0, neus_variance_mean=0, lr=0, **kwargs):
         # self.vis.log(phase.iter_nr, loss, "loss_"+phase.name,  "loss_"+phase.name+"_"+self.experiment_name, smooth=True,  show_every=10, skip_first=10)
         # self.vis.log(phase.iter_nr, loss_dice, "loss_dice_"+phase.name, "loss_"+phase.name+"_"+self.experiment_name, smooth=True,  show_every=10, skip_first=10)
         # if phase.grad:

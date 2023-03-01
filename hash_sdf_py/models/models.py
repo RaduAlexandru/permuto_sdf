@@ -6,6 +6,8 @@ import torch
 # from termcolor import colored
 
 import numpy as np
+import os
+import sys
 
 
 
@@ -2644,15 +2646,16 @@ class SDFDenseAndHash(torch.nn.Module):
 
 class SDF(torch.nn.Module):
 
-    def __init__(self, boundary_primitive, geom_feat_size_out, nr_iters_for_c2f):
+    def __init__(self, in_channels, boundary_primitive, geom_feat_size_out, nr_iters_for_c2f):
         super(SDF, self).__init__()
 
+        self.in_channels=in_channels
         self.boundary_primitive=boundary_primitive
         self.geom_feat_size_out=geom_feat_size_out
 
 
         #create encoding
-        pos_dim=3
+        pos_dim=in_channels
         capacity=pow(2,18) #2pow18
         nr_levels=24 
         nr_feat_per_level=2 
@@ -2682,11 +2685,11 @@ class SDF(torch.nn.Module):
 
         self.c2f=permuto_enc.Coarse2Fine(nr_levels)
         self.nr_iters_for_c2f=nr_iters_for_c2f
-        self.last_nr_iters_used=None
+        self.last_iter_nr=sys.maxsize
 
     def forward(self, points, iter_nr):
 
-        assert points.shape[1] == 3, "points should be nx3"
+        assert points.shape[1] == self.in_channels, "points should be N x in_channels"
 
         self.last_iter_nr=iter_nr
 
