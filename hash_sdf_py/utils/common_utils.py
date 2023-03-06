@@ -8,6 +8,7 @@ import math
 import functools
 from matplotlib import cm
 import random
+import os
 
 import copy
 import inspect
@@ -24,9 +25,11 @@ from torch.nn.modules.module import _addindent
 
 from easypbr  import *
 
-# from instant_ngp_2_py.utils.aabb import *
+from hash_sdf_py.utils.aabb import *
 # from instant_ngp_2_py.utils.sphere import *
 from hash_sdf  import Sphere
+
+from hash_sdf_py.paths.data_paths import *
 
 
 #Just to have something close to the macros we have in c++
@@ -1219,192 +1222,97 @@ def get_combinations(input_tensor):
     return output_tensor
 
 
-def create_dataloader(dataset_name, scene_name, config_path, use_home_computer, use_all_imgs, without_mask):
+def create_dataloader(config_path, dataset_name, scene_name, low_res, comp_name, with_mask):
 
     from dataloaders import DataLoaderEasyPBR
     from dataloaders import DataLoaderMultiFace
     from dataloaders import DataLoaderPhenorobCP1
     from dataloaders import DataLoaderDTU
+
+    data_path=data_paths[comp_name]
     
     if dataset_name=="easypbr":
         # easypbr
         loader_train=DataLoaderEasyPBR(config_path)
         loader_train.set_mode_train()
         loader_train.set_limit_to_nr_imgs(-1)
-        loader_train.set_load_mask(not without_mask)
-        if use_home_computer:
-            loader_train.set_dataset_path("/media/rosu/Data/data/easy_pbr_renders")
-        else:
-            loader_train.set_dataset_path("/home/user/rosu/data/easy_pbr_renders")
-            loader_train.set_subsample_factor(1)
-        # loader_train.set_limit_to_nr_imgs(14)
+        loader_train.set_load_mask(with_mask)
+        loader_train.set_dataset_path(os.path.join(data_path,"easy_pbr_renders"))
+        if low_res:
+            loader_train.set_subsample_factor(4)
         loader_train.start()
         #easypbr test
         loader_test=DataLoaderEasyPBR(config_path)
         loader_test.set_mode_test()
         loader_test.set_limit_to_nr_imgs(10)
-        loader_test.set_load_mask(not without_mask)
-        if use_home_computer:
-            loader_test.set_dataset_path("/media/rosu/Data/data/easy_pbr_renders")
-        else:
-            loader_test.set_dataset_path("/home/user/rosu/data/easy_pbr_renders")
-            loader_test.set_subsample_factor(1)
+        loader_test.set_load_mask(with_mask)
+        loader_test.set_dataset_path(os.path.join(data_path,"easy_pbr_renders"))
+        if low_res:
+            loader_test.set_subsample_factor(4)
         loader_test.start()
     elif dataset_name=="multiface":
         subject_id=int(scene_name) #a bit hacky but now scene name should actually be an int saying the subject id
         loader_train=DataLoaderMultiFace(config_path, subject_id)
-        if use_home_computer:
-            loader_train.set_dataset_path("/media/rosu/Data/data/multiface/multiface_data")
-        else:
-            loader_train.set_dataset_path("/home/user/rosu/data/multiface/multiface_data")
-            loader_train.set_subsample_factor(1)
+        loader_train.set_dataset_path(os.path.join(data_path,"multiface/multiface_data"))
+        if low_res:
+            loader_train.set_subsample_factor(4)
         loader_train.set_mode_train()
-        if not use_home_computer: #we are on remote so we use the higher resolution
-            loader_train.set_subsample_factor(1)
         loader_train.start()
         #easypbr test
         loader_test=DataLoaderMultiFace(config_path, subject_id)
-        if use_home_computer:
-            loader_test.set_dataset_path("/media/rosu/Data/data/multiface/multiface_data")
-        else:
-            loader_test.set_dataset_path("/home/user/rosu/data/multiface/multiface_data")
-            loader_test.set_subsample_factor(1)
         loader_test.set_mode_test()
+        loader_test.set_dataset_path(os.path.join(data_path,"multiface/multiface_data"))
+        if low_res:
+            loader_test.set_subsample_factor(4)
         loader_test.start()
     elif dataset_name=="phenorobcp1":
         loader_train=DataLoaderPhenorobCP1(config_path)
-        if not use_home_computer: #we are on remote so we use the higher resolution
-            loader_train.set_subsample_factor(1)
+        if low_res:
+            loader_train.set_subsample_factor(4)
         loader_train.start()
         loader_test=DataLoaderPhenorobCP1(config_path)
-        if not use_home_computer: #we are on remote so we use the higher resolution
-            loader_test.set_subsample_factor(1)
+        if low_res:
+            loader_test.set_subsample_factor(4)
         loader_test.start()
     elif dataset_name=="dtu":
         loader_train=DataLoaderDTU(config_path)
-        if use_home_computer:
-            loader_train.set_dataset_path("/media/rosu/Data/data/neus_data/data_DTU")
-        else:
-            loader_train.set_dataset_path("/home/user/rosu/data/neus_data/data_DTU")
-            loader_train.set_subsample_factor(1)
+        loader_train.set_dataset_path(os.path.join(data_path,"neus_data/data_DTU"))
+        if low_res:
+            loader_train.set_subsample_factor(4)
         loader_train.set_mode_train()
-        if use_all_imgs:
-            loader_train.set_mode_all()
-        loader_train.set_load_mask(not without_mask)
-
-
+        loader_train.set_load_mask(with_mask)
         if scene_name:
             loader_train.set_restrict_to_scene_name(scene_name)
-        #set the gpu preloading
-        # if use_home_computer:
-            # loader_train.set_preload_to_gpu_tensors(False) 
-        # else:
-            # loader_train.set_preload_to_gpu_tensors(True) 
         loader_train.start()
-
-
         #the test one has the same scene as the train one 
         loader_test=DataLoaderDTU(config_path)
-        if use_home_computer:
-            loader_test.set_dataset_path("/media/rosu/Data/data/neus_data/data_DTU")
-        else:
-            loader_test.set_dataset_path("/home/user/rosu/data/neus_data/data_DTU")
-            loader_test.set_subsample_factor(1)
+        loader_test.set_dataset_path(os.path.join(data_path,"neus_data/data_DTU"))
+        if low_res:
+            loader_test.set_subsample_factor(4)
         loader_test.set_mode_test()
-        loader_test.set_load_mask(not without_mask)
+        loader_test.set_load_mask(with_mask)
         if scene_name:
             loader_test.set_restrict_to_scene_name(scene_name)
-        #set the gpu preloading
-        # if use_home_computer:
-            # loader_test.set_preload_to_gpu_tensors(False) 
-        # else:
-            # loader_test.set_preload_to_gpu_tensors(True) 
         loader_test.start()
     elif dataset_name=="bmvs":
         loader_train=DataLoaderDTU(config_path)
         loader_train.set_mode_train()
-        if use_all_imgs:
-            loader_train.set_mode_all()
-        loader_train.set_load_mask(not without_mask)
-
-        if use_home_computer:
-            loader_train.set_dataset_path("/media/rosu/Data/data/neus_data/data_BlendedMVS")
-            # loader_train.set_subsample_factor(4)
-        else:
-            loader_train.set_dataset_path("/home/user/rosu/data/neus_data/data_BlendedMVS")
-            loader_train.set_subsample_factor(1)
-
+        loader_train.set_load_mask(with_mask)
+        loader_train.set_dataset_path(os.path.join(data_path,"neus_data/data_BlendedMVS"))
+        if low_res: 
+            loader_train.set_subsample_factor(4)
         if scene_name:
             loader_train.set_restrict_to_scene_name(scene_name)
-        #set the gpu preloading
-        # if use_home_computer:
-            # loader_train.set_preload_to_gpu_tensors(False) 
-        # else:
-            # loader_train.set_preload_to_gpu_tensors(True) 
-        # loader_train.set_rotate_scene_x_axis_degrees(90)
-        # loader_train.set_scene_scale_multiplier(0.5)
-        # loader_train.set_restrict_to_scene_name("bmvs_stone")
         loader_train.start()
         #the test one has the same scene as the train one 
         loader_test=DataLoaderDTU(config_path)
         loader_test.set_mode_test()
-        loader_test.set_load_mask(not without_mask)
-        if use_home_computer:
-            loader_test.set_dataset_path("/media/rosu/Data/data/neus_data/data_BlendedMVS")
-            # loader_test.set_subsample_factor(4)
-        else:
-            loader_test.set_dataset_path("/home/user/rosu/data/neus_data/data_BlendedMVS")
-            loader_test.set_subsample_factor(1)
+        loader_test.set_load_mask(with_mask)
+        loader_test.set_dataset_path(os.path.join(data_path,"neus_data/data_BlendedMVS"))
+        if low_res:
+            loader_test.set_subsample_factor(4)
         if scene_name:
             loader_test.set_restrict_to_scene_name(scene_name)
-        #set the gpu preloading
-        # if use_home_computer:
-            # loader_test.set_preload_to_gpu_tensors(False) 
-        # else:
-            # loader_test.set_preload_to_gpu_tensors(True) 
-        # loader_test.set_rotate_scene_x_axis_degrees(90)
-        # loader_test.set_scene_scale_multiplier(0.5)
-        # loader_test.set_restrict_to_scene_name("bmvs_stone")
-        loader_test.start()
-    elif dataset_name=="nerf":
-        loader_train=DataLoaderNerf(config_path)
-        if use_home_computer:
-            loader_train.set_dataset_path("/media/rosu/Data/data/nerf/nerf_synthetic/nerf_synthetic")
-        else:
-            loader_train.set_dataset_path("/home/user/rosu/data/neus_data/data_DTU")
-        loader_train.set_mode_train()
-        if use_all_imgs:
-            # loader_train.set_mode_all()
-            print("using the train for nerf because all imgs is just too much")
-            loader_train.set_mode_train()
-        loader_train.set_load_mask(not without_mask)
-
-
-        if scene_name:
-            loader_train.set_restrict_to_scene_name(scene_name)
-        #set the gpu preloading
-        # if use_home_computer:
-            # loader_train.set_preload_to_gpu_tensors(False) 
-        # else:
-            # loader_train.set_preload_to_gpu_tensors(True) 
-        loader_train.start()
-
-
-        #the test one has the same scene as the train one 
-        loader_test=DataLoaderDTU(config_path)
-        if use_home_computer:
-            loader_test.set_dataset_path("/media/rosu/Data/data/neus_data/data_DTU")
-        else:
-            loader_test.set_dataset_path("/home/user/rosu/data/neus_data/data_DTU")
-        loader_test.set_mode_test()
-        loader_test.set_load_mask(not without_mask)
-        if scene_name:
-            loader_test.set_restrict_to_scene_name(scene_name)
-        #set the gpu preloading
-        # if use_home_computer:
-            # loader_test.set_preload_to_gpu_tensors(False) 
-        # else:
-            # loader_test.set_preload_to_gpu_tensors(True) 
         loader_test.start()
     else:
         print("UNKOWN datasetname in create_dataloader")
@@ -1414,61 +1322,23 @@ def create_dataloader(dataset_name, scene_name, config_path, use_home_computer, 
 
 def create_bb_for_dataset(dataset_name):
     if dataset_name=="easypbr":
-        # aabb=AABB(bounding_box_sizes_xyz=[1.0, 1.0, 1.0], bounding_box_translation=[0.0, 0.0, 0.0])
-        # aabb_big=AABB(bounding_box_sizes_xyz=[1.0, 1.0, 1.0], bounding_box_translation=[0.0, 0.0, 0.0])
         aabb=Sphere(0.5, [0,0,0])
-        aabb_big=Sphere(0.5, [0,0,0])
     elif dataset_name=="multiface":
-        # aabb=AABB(bounding_box_sizes_xyz=[1.0, 1.0, 1.0], bounding_box_translation=[0.0, 0.0, 0.0])
-        # aabb_big=AABB(bounding_box_sizes_xyz=[1.0, 1.0, 1.0], bounding_box_translation=[0.0, 0.0, 0.0])
         aabb=Sphere(0.5, [0,0,0])
-        aabb_big=Sphere(0.5, [0,0,0])
     elif dataset_name=="phenorobcp1":
-        # aabb=AABB(bounding_box_sizes_xyz=[1.0, 0.35, 1.0], bounding_box_translation=[0.0, 0.0, 0.0])
-        # aabb_big=AABB(bounding_box_sizes_xyz=[1.5, 0.35, 1.5], bounding_box_translation=[0.0, 0.0, 0.0])
-        #for maiz
-        # aabb=AABB(bounding_box_sizes_xyz=[1.0, 0.8, 1.0], bounding_box_translation=[0.0, 0.09, 0.0])
-        # aabb_big=AABB(bounding_box_sizes_xyz=[1.8, 0.8, 1.8], bounding_box_translation=[0.0, 0.09, 0.0])
-        #still for maiz but the box is unit cube
-        # aabb=AABB(bounding_box_sizes_xyz=[1.0, 1.0, 1.0], bounding_box_translation=[0.0, 0.0, 0.0])
-        # aabb_big=AABB(bounding_box_sizes_xyz=[1.8, 1.0, 1.8], bounding_box_translation=[0.0, 0.0, 0.0])
-
         #for presenting udirng the workshop at cka
         # aabb=Sphere(0.7, [0,0,0])
-        # aabb_big=Sphere(0.7, [0,0,0])
-
         #for the cp1 paper
         aabb=Sphere(0.5, [0,0,0])
-        aabb_big=Sphere(0.5, [0,0,0])
     elif dataset_name=="dtu":
-        # aabb=AABB(bounding_box_sizes_xyz=[1.0, 1.0, 1.0], bounding_box_translation=[0.0, 0.0, 0.0])
-        # aabb_big=AABB(bounding_box_sizes_xyz=[1.0, 1.0, 1.0], bounding_box_translation=[0.0, 0.0, 0.0])
-        #better to make ti a sphere because it's easier to creat the background samples for modelling the rest of the scene
-        # aabb=SpherePy(radius=0.7, center=[0,0,0])
-        # aabb_big=SpherePy(radius=0.7, center=[0,0,0])
-        aabb=Sphere(0.49, [0,0,0]) #so we make sure we don't acces the occupancy grid outside
-        aabb_big=Sphere(0.49, [0,0,0])
+        aabb=Sphere(0.5, [0,0,0]) #so we make sure we don't acces the occupancy grid outside
     elif dataset_name=="bmvs":
-        # aabb=SpherePy(radius=0.5, center=[0,0,0])
-        # aabb_big=SpherePy(radius=0.5, center=[0,0,0])
-        radius=0.49
-        # if scene_name=="bmvs_dog":
-            # radius=0.4 #needs a smaller radius otherwise the dog get learned as images on the backside of the sphere
-
-        aabb=Sphere(radius, [0,0,0])
-        aabb_big=Sphere(radius, [0,0,0])
-    elif dataset_name=="nerf":
-        # aabb=SpherePy(radius=0.5, center=[0,0,0])
-        # aabb_big=SpherePy(radius=0.5, center=[0,0,0])
-        aabb=Sphere(0.49, [0,0,0])
-        aabb_big=Sphere(0.49, [0,0,0])
-    
-        
+        aabb=Sphere(0.5, [0,0,0])
     else:
         print("UNKOWN datasetname in create_bb_for_dataset")
         exit(1)
 
-    return aabb, aabb_big
+    return aabb
 
 def create_bb_mesh(aabb):
 
@@ -1488,85 +1358,6 @@ def create_bb_mesh(aabb):
         bb_mesh.m_vis.m_show_wireframe=True
     return bb_mesh
 
-# def get_input(phase):
-#     gt_mask=None
-
-#      #####GET EAYSPBR
-#     if isinstance(phase.loader, DataLoaderEasyPBR):
-#         frame=phase.loader.get_next_frame()
-#         gt_rgb=mat2tensor(frame.rgb_32f, True).to("cuda")
-#     #####GET PHENOROB preloaded
-#     elif isinstance(phase.loader, DataLoaderPhenorobCP1):
-#         frame_py=random.choice(phase.frames)
-#         frame=frame_py.frame
-#         gt_rgb=frame_py.rgb_tensor
-#         # gt_mask=torch.ones_like(gt_rgb)
-#         #get the mask as only 1 channel
-#         # gt_mask=gt_mask[:,0:1, :,:]
-#     elif isinstance(phase.loader, DataLoaderDTU):
-#         frame=phase.loader.get_random_frame()
-#         if frame.has_extra_field("has_gpu_tensors"):
-#             gt_rgb=frame.get_extra_field_tensor("rgb_32f_tensor")
-#             if frame.has_extra_field("mask_tensor"):
-#                 gt_mask=frame.get_extra_field_tensor("mask_tensor")
-#             else:
-#                 gt_mask=None
-#         else:
-#             gt_rgb=mat2tensor(frame.rgb_32f, True).to("cuda")
-#             if not frame.mask.empty():
-#                 gt_mask=mat2tensor(frame.mask, False).to("cuda")
-#                 gt_rgb=gt_rgb*gt_mask
-#                 #get the mask as only 1 channel
-#                 gt_mask=gt_mask[:,0:1, :,:]
-#     else:
-#         print("UNKOWN datasetname in get_input")
-#         exit(1)
-    
-#     return frame, gt_rgb, gt_mask
-
-def define_nr_rays(loader, use_home_computer):
-
-    from dataloaders import DataLoaderEasyPBR
-    from dataloaders import DataLoaderMultiFace
-    from dataloaders import DataLoaderPhenorobCP1
-    from dataloaders import DataLoaderDTU
-
-    if isinstance(loader, DataLoaderEasyPBR):
-        # nr_rays=512
-        if use_home_computer:
-            nr_rays=512
-        else:
-            nr_rays=512
-    elif isinstance(loader, DataLoaderMultiFace):
-        # nr_rays=512
-        if use_home_computer:
-            nr_rays=512
-        else:
-            nr_rays=512
-    elif isinstance(loader, DataLoaderPhenorobCP1):
-        # nr_rays=512
-        if use_home_computer:
-            nr_rays=512
-        else:
-            nr_rays=512
-    elif isinstance(loader, DataLoaderDTU):
-        # nr_rays=512
-        if use_home_computer:
-            nr_rays=512
-        else:
-            nr_rays=512
-    elif isinstance(loader, DataLoaderNerf):
-        # nr_rays=512
-        if use_home_computer:
-            nr_rays=512
-        else:
-            nr_rays=512
-        
-    else:
-        print("UNKOWN datasetname")
-        exit(1)
-
-    return nr_rays 
 
     
 def linear2color_corr(img, dim: int = -1):

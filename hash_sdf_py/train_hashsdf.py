@@ -9,11 +9,13 @@ import sys
 import os
 import numpy as np
 import time
+import argparse
 
 import easypbr
 from easypbr  import *
 from dataloaders import *
 
+import hash_sdf
 from hash_sdf  import TrainParams
 from hash_sdf  import NGPGui
 from hash_sdf  import OccupancyGrid
@@ -26,6 +28,9 @@ from hash_sdf_py.utils.nerf_utils import create_rays_from_frame
 from hash_sdf_py.utils.common_utils import show_points
 from hash_sdf_py.utils.common_utils import tex2img
 from hash_sdf_py.utils.common_utils import colormap
+from hash_sdf_py.utils.common_utils import create_dataloader
+from hash_sdf_py.utils.common_utils import create_bb_for_dataset
+from hash_sdf_py.utils.hahsdf_utils import get_frames_cropped
 from hash_sdf_py.utils.aabb import AABB
 
 from hash_sdf_py.callbacks.callback import *
@@ -45,6 +50,28 @@ config_path=os.path.join( os.path.dirname( os.path.realpath(__file__) ) , '../co
 
 # #initialize the parameters used for training
 train_params=TrainParams.create(config_path)    
+class HyperParams:
+    lr: 1e-3
+    nr_iter_sphere_fit=4000
+    eikonal_weight=0.04
+    curvature_weight=1300.0
+    lipshitz_weight=1.0
+    iter_start_reduce_curv=50000
+    iter_finish_reduce_curv=iter_start_reduce_curv+1001
+    lr_milestones=[100000,150000,180000,190000]
+    iter_finish_training=200000
+    use_occupancy_grid=True
+    nr_samples_bg=32
+    min_dist_between_samples=0.0001
+    nr_samples_per_ray=64 #for the foreground
+    nr_samples_imp_sampling=16
+    do_imp_sampling=True #adds nr_samples_imp_samplingx2 more samples pery ray
+    use_color_calibration=True
+    nr_rays=512
+    sdf_geom_feat_size=32
+    sdf_nr_iters_for_c2f=10000
+hyperparams=HyperParams()
+
 
 
 
@@ -511,7 +538,7 @@ def run_net_sphere_traced_batched(frame, chunk_size,   args, tensor_reel,  min_d
     return pred_rgb_img, pred_weights_sum_img, pred_normals_img, pred_depth_img, pred_features_img, pts_start, pts_end
 
 
-def train(args, config_path, loader_train, frames_train, experiment_name, dataset_name, with_viewer, with_tensorboard, save_checkpoint, checkpoint_path, tensor_reel, lr, iter_start_curv, lr_milestones, iter_finish_training):
+def train(args, config_path, hyperparams, loader_train, experiment_name, with_viewer, with_tensorboard, save_checkpoint, checkpoint_path, tensor_reel):
 
 
     #train
@@ -528,38 +555,20 @@ def train(args, config_path, loader_train, frames_train, experiment_name, datase
         # view.m_camera.from_string(" -0.380117 -0.0556938   0.167511  -0.105197  -0.426046 -0.0499672 0.897171  0.116958 -0.208198 -0.237689 60 0.0502494 5024.94")
 
     
-    #params
-    nr_lattice_features=2
-    nr_resolutions=24
-    # nr_resolutions=8
-    use_home= args.type=="home"
-    use_mask_loss=not args.without_mask
-    nr_samples_bg=32
-    print("use_all_imgs", args.use_all_imgs)
-    print("without_mask", args.without_mask)
-
-
-    #torch stuff 
-    lattice=Lattice.create(config_path, "lattice")
-    nr_lattice_vertices=lattice.capacity()
-    #make a lattice for 4D nerf for hte background
-    lattice_bg=Lattice.create(config_path, "lattice")
-    lattice_bg.set_sigmas_from_string("1.0 4") #the sigma doenst really matter but the 4 matters here
-    #loader
-    # loader_train, loader_test= create_dataloader(dataset_name, args.scene, config_path, use_home, args.use_all_imgs, args.without_mask)
-
-    aabb, aabb_big = create_bb_for_dataset(dataset_name)
+    aabb = create_bb_for_dataset(dataset_name)
     if with_viewer:
         bb_mesh = create_bb_mesh(aabb) 
         Scene.show(bb_mesh,"bb_mesh")
 
 
-    nr_rays_to_create = define_nr_rays(loader_train, use_home) 
-    expected_samples_per_ray=64+16+16 #we have 64 uniform samples and we run two importance samples
+    nr_rays_to_create = hyperparams.nr_rays
+    expected_samples_per_ray=hyperparams.nr_samples_per_ray
+    if hyperparams.do_imp_sampling:
+        expected_samples_per_ray+=hyperparams.nr_samples_imp_sampling*2 #we have 64 uniform samples and we run two importance samples
     target_nr_of_samples=512*expected_samples_per_ray
 
 
-    cb=create_callbacks_simpler_1(with_viewer, with_tensorboard, experiment_name, config_path)
+    cb=create_callbacks_simple(with_viewer, with_tensorboard, experiment_name)
 
 
     #create phases
@@ -567,8 +576,9 @@ def train(args, config_path, loader_train, frames_train, experiment_name, datase
         Phase('train', loader_train, grad=True),
     ]
     #model 
-    model=SDF(nr_lattice_vertices, nr_lattice_features, nr_resolutions=nr_resolutions, boundary_primitive=aabb_big, feat_size_out=32, nr_iters_for_c2f=10000, N_initial_samples=64, N_samples_importance=64, N_iters_upsample=4 ).to("cuda")
-    model_rgb=RGB(nr_lattice_vertices, nr_lattice_features, nr_resolutions=24, feat_size_in=32, nr_cams=loader_train.nr_samples() ).to("cuda")
+    model_sdf=SDF(in_channels=3, boundary_primitive=aabb, geom_feat_size_out=hyperparams.sdf_geom_feat_size, nr_iters_for_c2f=hyperparams.sdf_nr_iters_for_c2f).to("cuda")
+    # model_rgb=RGB(nr_lattice_vertices, nr_lattice_features, nr_resolutions=24, feat_size_in=32, nr_cams=loader_train.nr_samples() ).to("cuda")
+    model_sdf=RGB(in_channels=3, boundary_primitive=aabb, geom_feat_size_in=hyperparams.sdf_geom_feat_size, nr_iters_for_c2f=0).to("cuda")
     model_bg=NerfHash(4, nr_lattice_vertices, nr_lattice_features, nr_resolutions=nr_resolutions, boundary_primitive=aabb, nr_samples_per_ray=nr_samples_bg, nr_iters_for_c2f=1 ).to("cuda")
     model_colorcal=Colorcal(loader_train.nr_samples(), 0)
     occupancy_grid=OccupancyGrid(256, 1.0, [0,0,0])
@@ -1121,43 +1131,51 @@ def run():
 
     #argparse
     parser = argparse.ArgumentParser(description='Train sdf and color')
-    parser.add_argument('--nr_iter_sphere_fit', type=int, default=4000, help="Nr iterations doing sphere fitting")
+    # parser.add_argument('--nr_iter_sphere_fit', type=int, default=4000, help="Nr iterations doing sphere fitting")
     # parser.add_argument('--nr_iter_sphere_fit', type=int, default=4, help="Nr iterations doing sphere fitting")
-    parser.add_argument('--eik_w', type=float, default=0.04, help="Weight for the eikonal loss")
-    parser.add_argument('--curv_w', type=float, default=1300.0, help="Weight for the curvature loss")
+    # parser.add_argument('--eik_w', type=float, default=0.04, help="Weight for the eikonal loss")
+    # parser.add_argument('--curv_w', type=float, default=1300.0, help="Weight for the curvature loss")
+    parser.add_argument('--dataset', default="", required=True, help='Dataset like bmvs, dtu, multiface')
+    parser.add_argument('--scene', default="", required=True, help='Scene name like dtu_scan24')
+    parser.add_argument('--comp_name', required=True,  help='Tells which computer are we using which influences the paths for finding the data')
+    parser.add_argument('--low_res', action='store_true', help="Use_low res images for training for when you have little GPU memory")
     parser.add_argument('--exp_info', default="", help='Experiment info string useful for distinguishing one experiment for another')
-    parser.add_argument('--scene', default="", help='Scene name like dtu_scan24')
-    parser.add_argument('--type', required=True, choices=['home', 'remote'], help='Tells which computer are we using')
-    parser.add_argument('--use_all_imgs', action='store_true', help="Use all images instead of just the training set")
-    parser.add_argument('--without_mask', action='store_true', help="Set this to true in order to train without a mask and model the BG differently")
+    # parser.add_argument('--use_all_imgs', action='store_true', help="Use all images instead of just the training set")
+    parser.add_argument('--with_mask', action='store_true', help="Set this to true in order to train with a mask")
+    parser.add_argument('--no_viewer', action='store_true', help="Set this to true in order disable the viewer")
     args = parser.parse_args()
+    with_viewer=not args.no_viewer
 
 
 
+    #get the checkpoints path which will be at the root of the hash_sdf package 
+    hash_sdf_root=os.path.dirname(os.path.abspath(hash_sdf.__file__))
+    checkpoint_path=os.path.join(hash_sdf_root, "checkpoints")
+    os.makedirs(checkpoint_path, exist_ok=True)
 
 
-    experiment_name="s_"+args.exp_info+"_"
-    experiment_name+=""+args.scene
+
+    print("args.with_mask", args.with_mask)
+    print("args.low_res", args.low_res)
+    print("checkpoint_path",checkpoint_path)
+    print("with_viewer", with_viewer)
 
 
-    use_home= args.type=="home"
+    experiment_name="hashsdf_"+args.scene+args.exp_info+"_"
 
-    loader_train, loader_test= create_dataloader(train_params.dataset_name(), args.scene, config_path, use_home, args.use_all_imgs, args.without_mask)
-    aabb, aabb_big = create_bb_for_dataset(train_params.dataset_name())
 
-    #crop frames around the plant
-    frames_train=None
-    if isinstance(loader_train, DataLoaderPhenorobCP1):
-        frames_train=get_frames_cropped(loader_train, aabb)
-        
+    loader_train, loader_test= create_dataloader(config_path, args.dataset, args.scene, args.low_res, args.comp_name, args.with_mask)
+
     #tensoreel
     if isinstance(loader_train, DataLoaderPhenorobCP1):
-        tensor_reel=MiscDataFuncs.frames2tensors(frames_train) #make an tensorreel and get rays from all the images at
+        aabb = create_bb_for_dataset(args.dataset)
+        tensor_reel=MiscDataFuncs.frames2tensors( get_frames_cropped(loader_train, aabb) ) #make an tensorreel and get rays from all the images at
     else:
         tensor_reel=MiscDataFuncs.frames2tensors(loader_train.get_all_frames()) #make an tensorreel and get rays from all the images at
 
 
-    train(args, config_path, loader_train, frames_train, experiment_name, train_params.dataset_name(),  train_params.with_viewer(), train_params.with_tensorboard(), train_params.save_checkpoint(), train_params.checkpoint_path(), tensor_reel, train_params.lr(), 50000 ,[100000,150000,180000,190000], 200000)
+
+    train(args, config_path, hyperparams, loader_train, experiment_name, with_viewer, train_params.with_tensorboard(), train_params.save_checkpoint(), checkpoint_path, tensor_reel)
 
     #finished training
     return

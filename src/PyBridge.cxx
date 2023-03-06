@@ -141,15 +141,15 @@ PYBIND11_MODULE(hash_sdf, m) {
     //TrainParams
     py::class_<TrainParams, std::shared_ptr<TrainParams>   > (m, "TrainParams", py::module_local())
     .def_static("create", &TrainParams::create<const std::string> ) //for templated methods like this one we need to explicitly instantiate one of the arguments
-    .def("dataset_name",  &TrainParams::dataset_name )
-    .def("with_viewer",  &TrainParams::with_viewer )
+    // .def("dataset_name",  &TrainParams::dataset_name )
+    // .def("with_viewer",  &TrainParams::with_viewer )
     .def("with_visdom",  &TrainParams::with_visdom )
     .def("with_tensorboard",  &TrainParams::with_tensorboard )
     .def("with_wandb",  &TrainParams::with_wandb )
-    .def("lr",  &TrainParams::lr )
-    .def("weight_decay",  &TrainParams::weight_decay )
+    // .def("lr",  &TrainParams::lr )
+    // .def("weight_decay",  &TrainParams::weight_decay )
     .def("save_checkpoint",  &TrainParams::save_checkpoint )
-    .def("checkpoint_path",  &TrainParams::checkpoint_path )
+    // .def("checkpoint_path",  &TrainParams::checkpoint_path )
     ;
 
     // //EvalParams

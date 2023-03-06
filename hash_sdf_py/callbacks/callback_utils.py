@@ -26,7 +26,7 @@ def create_callbacks(train_params, experiment_name, config_path):
 
     return cb
 
-def create_callbacks_simpler_1(with_viewer, with_tensorboard, experiment_name, config_path):
+def create_callbacks_simple(with_viewer, with_tensorboard, experiment_name):
     cb_list = []
     if(with_tensorboard):
         tensorboard_callback=TensorboardCallback(experiment_name)

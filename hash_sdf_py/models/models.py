@@ -17,6 +17,8 @@ import sys
 # from easy_pbr_py.lattice.lattice_modules import *
 # from easy_pbr_py.voxel_grid.voxel_grid_modules import *
 # from easy_pbr_py.volume_rendering.volume_rendering_modules import *
+from hash_sdf_py.volume_rendering.volume_rendering_modules import *
+from hash_sdf_py.models.modules import CreateRaysModule
 # from easy_pbr_py.easy_pbr.nerf_utils import *
 # from easy_pbr_py.easy_pbr.volsdf_modules import *
 # from easy_pbr_py.easy_pbr.neus_modules import *
@@ -25,6 +27,7 @@ import sys
 from hash_sdf_py.utils.common_utils import map_range_val
 from hash_sdf_py.utils.common_utils import leaky_relu_init
 from hash_sdf_py.utils.common_utils import apply_weight_init_fn
+from hash_sdf import HashSDF
 # from easy_pbr_py.utils.common_utils import cosine_easing_window
 
 # from easy_pbr  import InstantNGP
@@ -2659,8 +2662,8 @@ class SDF(torch.nn.Module):
         capacity=pow(2,18) #2pow18
         nr_levels=24 
         nr_feat_per_level=2 
-        coarsest_scale=1.0 ##we tested that at sigma of 4 is when we slice form just one lattice 
-        finest_scale=0.0001 #default
+        coarsest_scale=1.0 
+        finest_scale=0.0001 
         scale_list=np.geomspace(coarsest_scale, finest_scale, num=nr_levels)
         self.encoding=permuto_enc.PermutoEncoding(pos_dim, capacity, nr_levels, nr_feat_per_level, scale_list, appply_random_shift_per_level=True, concat_points=True, concat_points_scaling=1e-3)           
 
@@ -2972,412 +2975,78 @@ class SDF(torch.nn.Module):
 
 class RGB(torch.nn.Module):
 
-    def __init__(self, nr_lattice_vertices, nr_lattice_features, nr_resolutions, feat_size_in, nr_cams):
+    def __init__(self, in_channels, boundary_primitive, geom_feat_size_in, nr_iters_for_c2f):
         super(RGB, self).__init__()
 
-        self.nr_lattice_features=nr_lattice_features
-
-        self.reduction_lattice="concat" #sum, concat
-        # self.reduction_lattice="sum" #sum, concat
-
-        # self.lattice_type="grid" #grid, permuto
-        # self.lattice_type="permuto" #grid, permuto
-        self.lattice_type="permuto_monolithic" #the same as permuto but it does the slicing from all levels at the same time and it's way faster
-        # self.lattice_type="hashgrid" #hashgrid
-
-
-        self.feat_size_in=feat_size_in
+        self.in_channels=in_channels
+        self.boundary_primitive=boundary_primitive
+        self.geom_feat_size_in=geom_feat_size_in
 
 
         # self.pick_rand_rows= RandRowPicker()
         self.pick_rand_pixels= RandPixelPicker(low_discrepancy=False) #do NOT use los discrepancy for now, it seems to align some of the rays to some directions so maybe it's not that good of an idea
-        # self.pick_patches_pixels= PatchesPixelPicker()
-        # self.pick_patch_and_rand_pixels= PatchAndRandPixelPicker()
-        self.error_picker=ErrorPixelPicker(128)
         self.pixel_sampler=PixelSampler()
         self.create_rays=CreateRaysModule()
 
-        self.nr_resolutions=nr_resolutions
-        self.slice_lattice=SliceLatticeWithCollisionsModule()
-        # self.slice_lattice=SliceLatticeWithCollisionsDifferentiableModule(smooth_barycentric=False)
-        self.slice_lattice_monolithic=SliceLatticeWithCollisionsFastMRMonolithicModule()
+        #create encoding
+        pos_dim=in_channels
+        capacity=pow(2,18) #2pow18
+        nr_levels=24 
+        nr_feat_per_level=2 
+        coarsest_scale=1.0 
+        finest_scale=0.0001 
+        scale_list=np.geomspace(coarsest_scale, finest_scale, num=nr_levels)
+        self.encoding=permuto_enc.PermutoEncoding(pos_dim, capacity, nr_levels, nr_feat_per_level, scale_list, appply_random_shift_per_level=True, concat_points=True, concat_points_scaling=1)           
 
-
-        # coarsest_sigma=1.0
-        # finest_sigma=0.0001
-        # finest_sigma=0.0005
-        # self.sigmas_list=np.geomspace(coarsest_sigma, finest_sigma, num=nr_resolutions) #the smaller the value, the finer the lattice
-        coarsest_sigma=1 ##we tested that at sigma of 4 is when we slice form just one lattice 
-        # coarsest_sigma=0.125 ##we tested that at sigma of 4 is when we slice form just one lattice 
-        finest_sigma=0.0001
-        # finest_sigma=coarsest_sigma
-        # finest_sigma=0.0005
-        self.sigmas_list=np.geomspace(coarsest_sigma, finest_sigma, num=nr_resolutions) #the smaller the value, the finer the lattice
-        # sigma=coarsest_sigma
-        # self.sigmas_list=[]
-        # while sigma>finest_sigma:
-        #     self.sigmas_list.append(sigma)
-        #     sigma=sigma/2.0
-        # print(self.sigmas_list)
-        # # print("nr resolutons", len(self.sigmas_list) )
-        # nr_resolutions=len(self.sigmas_list)
-        # self.nr_resolutions=nr_resolutions
-
-
-        self.scale_factor=Lattice.compute_scale_factor_tensor(self.sigmas_list,3)
-
-
-
-        
-
-
-
-
-
-
-        if self.lattice_type=="permuto":
-            self.lattice_values_list = torch.nn.ParameterList()
-            for i in range(nr_resolutions):
-                self.lattice_values_list.append(  torch.nn.Parameter( torch.randn( nr_lattice_vertices, nr_lattice_features  )*1e-4 , requires_grad=True)  )
-
-        elif self.lattice_type=="permuto_monolithic":
-            lattice_values_list_raw=[]
-            # init_list=np.geomspace(1e-1, 1e-6, num=nr_resolutions)
-            for i in range(nr_resolutions):
-                lattice_values_list_raw.append( torch.randn( nr_lattice_vertices, nr_lattice_features  )*1e-4  )
-            #make a monolithic version because we want to also use the monolithic slicer
-            self.lattice_values_monolithic=torch.cat(lattice_values_list_raw,1)
-            self.lattice_values_monolithic=self.lattice_values_monolithic.view(nr_lattice_vertices, nr_resolutions, nr_lattice_features).permute(1,0,2).contiguous() #get it to [nr_resolutions, nr_vertices, nr_features]
-            if Lattice.is_half_precision():
-                print("switching to half precision lattice values")
-                self.lattice_values_monolithic=self.lattice_values_monolithic.half()
-            self.lattice_values_monolithic=torch.nn.Parameter(self.lattice_values_monolithic)
-
-
-        elif self.lattice_type=="grid":
-            #make dense 3D grid
-            coarsest_grid_size=2
-            finest_grid_size=128
-            self.grid_size_list=np.geomspace(coarsest_grid_size, finest_grid_size, num=nr_resolutions)
-            self.grid_3d_list = torch.nn.ParameterList()
-            for i in range(nr_resolutions):
-                cur_grid_size=int(self.grid_size_list[i])
-                print("cur_grid_size",cur_grid_size)
-                self.grid_3d_list.append( torch.nn.Parameter( torch.randn( 1, nr_lattice_features, cur_grid_size, cur_grid_size, cur_grid_size  )*1e-4 , requires_grad=True)  )
-        elif self.lattice_type=="hashgrid":
-            config_encoding={
-                "otype": "HashGrid",
-                "n_levels": nr_resolutions,
-                "n_features_per_level": nr_lattice_features,
-                "log2_hashmap_size": 18,
-                "base_resolution": 1,
-                "per_level_scale": 1.5,
-                "interpolation": "Linear"
-            }
-            self.lattice_values_monolithic = tcnn.Encoding(n_input_dims=3, encoding_config=config_encoding)
-
-
-        nr_resolutions_to_slice=nr_resolutions
-        if self.reduction_lattice=="sum":
-            nr_resolutions_to_slice=1
-
-        #randomly shift the cloud at each resolution in order to avoid too many hash collisions
-        # self.random_shift_list=[]
-        # for i in range(nr_resolutions):
-            # self.random_shift_list.append(   torch.randn( 1, 3)  )
-        # self.random_shift_monolithic=torch.cat(self.random_shift_list,0)
-
-        # self.num_encoding_functions_dirs=4
-        # self.pos_encode_dir=PositionalEncoding(in_channels=3, num_encoding_functions=self.num_encoding_functions_dirs, only_sin=False)
-        # self.nr_channels_after_encoding_dirs=3+3*2*self.num_encoding_functions_dirs
-            
-
-        # self.mlp= nn.Sequential(
-        #     LinearWN(6 + nr_lattice_features*nr_resolutions_to_slice  +  feat_size_in,32),
-        #     torch.nn.Softplus(),
-        #     LinearWN(32,32),
-        #     torch.nn.Softplus(),
-        #     LinearWN(32,32),
-        #     torch.nn.Softplus(),
-        #     LinearWN(32,3)
-        # )
-        # apply_weight_init_fn(self, leaky_relu_init, negative_slope=0.0)
-        # leaky_relu_init(self.mlp[-1], negative_slope=1.0)
+       
 
         # with dirs encoded
-        lrmult=3e1
         self.mlp= nn.Sequential(
-            # LinearWN(3+3 + nr_lattice_features*nr_resolutions_to_slice  + self.nr_channels_after_encoding_dirs  +  feat_size_in, 128),
-            torch.nn.Linear(4+3 + nr_lattice_features*nr_resolutions_to_slice + 25 +  feat_size_in, 128),
-            # LinearELR(4+3 + nr_lattice_features*nr_resolutions_to_slice + 25 +  feat_size_in, 128, lrmult=lrmult),
-            # torch.nn.Linear(3 + 16 +  feat_size_in, 128),
-            # LinearWN(0  + 16  +  feat_size_in, 64),
-            # LinearWN( self.nr_channels_after_encoding_dirs  +  feat_size_in, 64),
-            # torch.nn.Softplus(),
-            # torch.nn.ReLU(),
-            # torch.nn.Mish(), # DO NOT USE MIsh, the lattice values can be qutie high and the exp here overflows
-            # torch.nn.SiLU(),
+            torch.nn.Linear(self.encoding.output_dims() + 25 + 3 + geom_feat_size_in, 128),
             torch.nn.GELU(),
             torch.nn.Linear(128,128),
-            # LinearELR(128,128, lrmult=lrmult),
-            # torch.nn.Softplus(),
-            # torch.nn.ReLU(),
-            # torch.nn.Mish(),
-            # torch.nn.SiLU(),
             torch.nn.GELU(),
             torch.nn.Linear(128,64),
-            # LinearELR(128,64, lrmult=lrmult),
-            # torch.nn.Softplus(),
-            # torch.nn.ReLU(),
-            # torch.nn.Mish(),
-            # torch.nn.SiLU(),
             torch.nn.GELU(),
             torch.nn.Linear(64,3)
-            # LinearELR(64,3, act_negative_slope=1.0, lrmult=lrmult)
         )
         apply_weight_init_fn(self.mlp, leaky_relu_init, negative_slope=0.0)
         leaky_relu_init(self.mlp[-1], negative_slope=1.0)
 
-        # in_channels=4+3 + nr_lattice_features*nr_resolutions_to_slice + 25 +  feat_size_in
-        # self.mlp=LipshitzMLP(in_channels, [128,128,64,3], last_layer_linear=True)
-
-        #init first linear because the input channels corresponding to the lattice features are actually mostly zero
-        # gain = np.sqrt(2.0 / (1.0 + 0.0 ** 2))
-        # self.mlp[0].fuse()
-        # n1 = self.mlp[0].in_features-nr_lattice_features*nr_resolutions_to_slice
-        # n2 = self.mlp[0].out_features
-        # std = gain * np.sqrt(2.0 / (n1 + n2))
-        # self.mlp[0].weight.data.uniform_(-std * np.sqrt(3.0), std * np.sqrt(3.0))
-        # self.mlp[0].unfuse()
-
-
-        # #make a mlp with tinycudnn
-        # mlp_tcnn_config={
-        #     "otype": "FullyFusedMLP",
-        #     "activation": "ReLU",
-        #     "output_activation": "None",
-        #     "n_neurons": 64,
-        #     "n_hidden_layers": 2
-        # }
-        # self.mlp = tcnn.Network(3 + nr_lattice_features*nr_resolutions_to_slice  + self.nr_channels_after_encoding_dirs  +  feat_size_in, 
-        #                 3, 
-        #                 mlp_tcnn_config) 
-        
-        
-
-        # self.mlp= SirenMLP(in_channels=3 + nr_lattice_features*nr_resolutions_to_slice  + 16  +  feat_size_in , hidden_dim=32, out_channels=3, nr_layers=2, scale_init=30)
-
-        # self.mlp= GaussMLP(in_channels=nr_lattice_features*nr_resolutions_to_slice, hidden_dim=32, out_channels=3, nr_layers=2, sigma=0.05)
-
-        # self.mod_sin=ModulatedSiren(in_channels_positions=3, in_channels_features=nr_lattice_features*nr_resolutions_to_slice, hidden_dim=32, out_channels=3, nr_layers=2, scale_init=90, flip_modulation=True)
-
-
-        # self.beta=torch.nn.Parameter( torch.ones( 1 )*0.16 ) #the smoothness of the sdf to radiance transform. The larger the value, the bigger the range of sdf that gets mapped to radiance. During optimization we would want it to get to zero so that the radiance becomes an indicator function directly at the surface
-
-
-        # #one relu for view dependent stuff( we cannot use siren becuause it's difficult to set a good scale)
-        # self.mlp_view_dep= nn.Sequential(
-        #     # LinearWN(6 +  nr_lattice_features*nr_resolutions_to_slice +  feat_size_in ,32),
-        #     LinearWN(3 + nr_lattice_features*nr_resolutions_to_slice  + self.nr_channels_after_encoding_dirs  +  feat_size_in ,32),
-        #     torch.nn.Softplus(),
-        #     LinearWN(32,16),
-        #     torch.nn.Softplus(),
-        #     LinearWN(16,3)
-        # )
-        # apply_weight_init_fn(self, leaky_relu_init, negative_slope=0.0)
-        # leaky_relu_init(self.mlp_view_dep[-1], negative_slope=1.0)
-        # #one siren mlp for the ray features and another softplus for the view dependant effects
-        # self.mlp_non_view_dep= SirenMLP(in_channels=nr_lattice_features*nr_resolutions_to_slice +  feat_size_in , hidden_dim=32, out_channels=3, nr_layers=2, scale_init=20)
-
-        #randomly shift the cloud at each resolution in order to avoid too many hash collisions
-        self.random_shift_list=[]
-        for i in range(nr_resolutions):
-            self.random_shift_list.append(   torch.randn( 1, 3)*10  )
-        self.random_shift_monolithic=torch.nn.Parameter( torch.cat(self.random_shift_list,0) ) #we make it a parameter just so it gets saved when we checkpoint
-
-
-
-
-
-
-        self.rgb_padding = 0.001  # Padding added to the RGB outputs.
-
+        self.c2f=permuto_enc.Coarse2Fine(nr_levels)
+        self.nr_iters_for_c2f=nr_iters_for_c2f
+        self.last_iter_nr=sys.maxsize 
 
         self.softplus=torch.nn.Softplus()
         self.sigmoid = torch.nn.Sigmoid()
 
+    def forward(self, points, samples_dirs, sdf_gradients, geom_feat,  iter_nr, model_colorcal=None, img_indices=None, ray_start_end_idx=None, nr_rays=None):
 
-        # self.model_color_calib=Colorcal(nr_cams).cuda()
+     
 
+        assert points.shape[1] == self.in_channels, "points should be N x in_channels"
 
-        self.c2f=Coarse2Fine(self.nr_resolutions)
+        self.last_iter_nr=iter_nr
 
-    
-    def forward(self, model_sdf, feat, sdf_gradients, points, samples_dirs, ls, iter_nr, model_colorcal=None, img_indices=None, ray_start_end_idx=None, nr_rays=None):
+       
+        window=self.c2f( map_range_val(iter_nr, 0.0, self.nr_iters_for_c2f, 0.3, 1.0   ) )
 
-        assert points.shape[1] == 3, "ray_samples_flat should be nx3"
-
-        # print("self.random_shift_monolithic min max", self.random_shift_monolithic.min(), self.random_shift_monolithic.max())
-
-        # window=self.c2f(iter_nr*10.0001)
-        # print("c2f for rgb")
-        window=self.c2f(1.0)
-        # print("finish_c2f_for_rgb")
-        # window=self.c2f(iter_nr*0.0003+0.3)
-        # window=self.c2f(iter_nr*0.0001+0.3)
-        # window=self.c2f( map_range_val(iter_nr, 0.0, 25000, 0.3, 1.0   ) )
-        # window=self.c2f( map_range_val(iter_nr, 0.0, 10000, 0.3, 1.0   ) )
-        # window=self.c2f(iter_nr*0.00003+0.3)
-        # window=(window>0.0)*1.0 #we do hard steps so that the network doesnt start learning very high values for the windowed dimensions that start annealing with a low value
-        # print("window", window)
-
-        # nr_rays=ray_dirs.shape[0]
-
-        ray_features_full=None
-        TIME_START("slice_full_rgb")
-        if self.lattice_type=="permuto":
-            ray_features_list=[]
-            for i in range(self.nr_resolutions):
-                #set the lattice values to zero because we will delta them with the parameters
-                ls.set_sigma(self.sigmas_list[i])
-                values=self.lattice_values_list[i] * window[i]
-                ray_features, splatting_indices, splatting_weights=self.slice_lattice(values, ls, points )
-                ray_features_list.append(ray_features)
-        elif self.lattice_type=="permuto_monolithic":
-            # pass
-            ray_features_full, splatting_indices, splatting_weights=self.slice_lattice_monolithic(self.lattice_values_monolithic, self.scale_factor, ls, points, self.random_shift_monolithic.detach(), window.view(-1), concat_points=True, points_scaling=1)
-        elif self.lattice_type=="grid":
-            #slice 3d grid
-            points_scaled=points*1.9 #scale from [-0.5, 0.5] to [-1, 1]
-            points_scaled=points_scaled.view(1,1,1,-1,3)
-            ray_features_list=[]
-            for i in range(len(self.grid_3d_list)):
-                values= self.grid_3d_list[i] * window[i]
-                # values= model_sdf.grid_3d_list[i] * window[i]
-                # ray_features=grid_sample_3d(values, points_scaled)
-                ray_features=torch.nn.functional.grid_sample(values, points_scaled, mode='bilinear')
-                ray_features=ray_features.transpose(1,4)
-                ray_features=ray_features.view(-1,self.nr_lattice_features)
-                ray_features_list.append(ray_features)
-        elif self.lattice_type=="hashgrid":
-            ray_features_full=self.lattice_values_monolithic(points)
-            # ray_features_full=ray_features_full.float()
-            ray_features_full=ray_features_full.view(-1,24,2)*window.view(1,-1,1)
-            # ray_features_full=ray_features_full.view(-1,2,24)*window.view(1,1,-1)
-            ray_features_full=ray_features_full.view(-1,48)
-            zeros=torch.zeros(ray_features_full.shape[0], 1)
-            ray_features_full=torch.cat([ray_features_full, points*1, zeros],1)
-        TIME_END("slice_full_rgb")
-
-
-        #reduce the features
-        # if ray_features_full==None: #if we don't have the full features it means we have to reduce the list.
-        #     if self.reduction_lattice=="concat":
-        #         ray_features_full=torch.cat(ray_features_list, 1)
-        #     elif self.reduction_lattice=="sum":
-        #         ray_features_full=torch.stack(ray_features_list, dim=0).sum(dim=0)
-        #         print("ray_features_full", ray_features_full.shape)
-
-        # nr_times_to_repeat=int(points.shape[0]/ray_dirs.view(-1,3).shape[0])
-        # print("nr_times_to_repeat", nr_times_to_repeat)
-
-        #dirs
-        # with torch.set_grad_enabled(False):
-            # ray_dirs_repeted=ray_dirs.view(-1,1,3).repeat(1,nr_times_to_repeat,1).view(-1,3)
-
-        #dirs encoded with positional encoding
-        # with torch.set_grad_enabled(False):
-            # ray_dirs_enc=self.pos_encode_dir(ray_dirs)
-            # ray_dirs_enc_repeted=ray_dirs_enc.view(-1,1,self.nr_channels_after_encoding_dirs).repeat(1,nr_times_to_repeat,1).contiguous().view(-1,self.nr_channels_after_encoding_dirs)
-
+        point_features=self.encoding(points, window.view(-1))
         #dirs encoded with spherical harmonics 
         with torch.set_grad_enabled(False):
-            samples_dirs_enc=InstantNGP.spherical_harmonics(samples_dirs,5)
-            # ray_dirs_enc_repeted=ray_dirs_enc.view(-1,1,16).repeat(1,nr_times_to_repeat,1).contiguous().view(-1,16)
-
-
+            samples_dirs_enc=HashSDF.spherical_harmonics(samples_dirs,5)
         #normals
         normals=F.normalize( sdf_gradients.view(-1,3), dim=1 )
 
-
-        #     ray_dirs_encoded=spherical_harmonics_basis(ray_dirs_lin)
-        #     print("ray_dirs_encoded", ray_dirs_encoded.shape)
-        #     print("ray_features_full", ray_features_full.shape)
-        #     ray_dirs_encoded_repeted=ray_dirs_encoded.view(-1,1,9).repeat(1,nr_times_to_repeat,1).view(-1,9)
-        #     print("ray_dirs_encoded_repeted", ray_dirs_encoded_repeted.shape)
-
-        # print("feat", feat.shape)
-
-        # gradient=F.normalize(gradient, dim=1)
-
-        points_encoded=points
-
-
-        # x=torch.cat([points,ray_features_full],1)
-        # x=torch.cat([points*1e-3,ray_features_full],1)
-        # x=torch.cat([ray_features_full, ray_dirs_encoded_repeted],1)
-        # x=torch.cat([ray_features_full, ray_dirs_encoded_repeted, gradient],1)
-        # x=torch.cat([ray_features_full, ray_dirs_repeted, gradient],1)
-        # x=torch.cat([ray_features_full, ray_dirs_repeted],1)
-        # x=torch.cat([ray_features_full, ray_dirs_repeted, normals],1)
-        # x=torch.cat([ray_dirs_enc_repeted],1)
-        # x=torch.cat([ray_features_full, ray_dirs_enc_repeted],1) ##the same but wit no normals
-
-        # x=torch.cat([ray_features_full, ray_dirs_enc_repeted, normals, feat],1)
-        # x=torch.cat([ray_features_full, ray_dirs_enc_repeted, normals],1) ###correct one
-        # x=torch.cat([ray_features_full, ray_dirs_enc_repeted],1) ###correct one but with no normal
-        # x_diffuse=torch.cat([ray_features_full, normals, feat],1)
-        # x_view_dep=torch.cat([ray_features_full, ray_dirs_enc_repeted, normals, feat],1)
-
-        # x=torch.cat([ray_features_full, ray_dirs_enc_repeted, normals, feat, points_encoded*1e-3],1)
-
-        # x=torch.cat([ray_features_full, ray_dirs_enc_repeted, normals, feat, points_encoded],1)
-        # print("samples_dirs_enc",samples_dirs_enc.shape)
-        # print("ray_features_full",ray_features_full.shape)
-        # print("feat",feat.shape)
-        x=torch.cat([ray_features_full, samples_dirs_enc, normals, feat],1)
-        # x=torch.cat([ray_dirs_enc_repeted, normals, feat],1)
-        # x=torch.cat([ray_features_full, ray_dirs_enc_repeted, normals, points_encoded],1)
-
-        # x=torch.cat([ray_features_full, ray_dirs_encoded_repeted, feat],1)
-        # x=torch.cat([ray_features_full],1)
-        # print("x min max", x.min(), x.max())
-
-        # print("before mlp x has mean and var", x.mean(), x.var())
+       
+        x=torch.cat([ray_features_full, samples_dirs_enc, normals, geom_feat],1)
+       
 
         TIME_START("RGB_mlp")
         x=self.mlp(x)
-        # rgb_diffuse=self.mlp(x_diffuse)
-        # rgb_view_dep=self.mlp_view_dep(x_view_dep)
-        # rgb_view_dep=torch.clamp(rgb_view_dep, min=0.0)
-        rgb_view_dep=None
         TIME_END("RGB_mlp")
 
-        # x=rgb_diffuse+rgb_view_dep
-
-        # print("after x min max", x.min(), x.max())
-        # x=self.mod_sin(points, ray_features_full)
-        # x+=self.sdf_shift
-        # x=0.5+x*0.1
-        # x=x*0.1
-
-        # print("x before sigmoid is ", x)
-        # print("after mlp x has mean and var", x.mean(), x.var())
-
-        # #two mlps
-        # rgb_no_view_dep=self.mlp_non_view_dep(ray_features_full)
-        # view_dep_input=torch.cat([ray_features_full, ray_dirs_enc_repeted, normals],1)
-        # rgb_view_dep=self.mlp_view_dep(view_dep_input)
-        # x=rgb_no_view_dep+rgb_view_dep
-
-
-        # if (frame_idx>=0):
-            # x=self.model_color_calib.calib_RGB_lin(x, str(frame_idx) )
-
-        # if model_colorcal is not None and img_indices is not None:
-            # x=model_colorcal.calib_RGB_rays_reel(x.view(nr_rays,-1,3), img_indices )
-            # x=x.view(-1,3)
-
+        
         if model_colorcal is not None and img_indices is not None:
             if ray_start_end_idx is not None:
                 TIME_START("colorcal")
@@ -3388,337 +3057,137 @@ class RGB(torch.nn.Module):
 
 
         x = self.sigmoid(x)
-        # x = x * (1 + 2 * self.rgb_padding) - self.rgb_padding #can create weird thing like having a slightly negative color. It doesnt seem that necessary
-        # x=x+0.5 #force the network to not be able to predict black and in order to predict black it has to drive the weights for volume rendering to zero
-        # x=map_range_tensor(x, -0.001, 1.0+0.001, 0.5, 1.0)
-
-        # print("x after sigmoid is ", x)
+        
 
 
-        # exit(1)
-
-
-        return x, rgb_view_dep
+        return x
 
     def save(self, root_folder, experiment_name, iter_nr):
 
         models_path=os.path.join(root_folder,"checkpoints/", experiment_name, str(iter_nr), "models")
         os.makedirs(models_path, exist_ok=True)
         torch.save(self.state_dict(), os.path.join(models_path, "rgb_model.pt")  )
+
 ###################NERF ################################
 class NerfHash(torch.nn.Module):
 
-    def __init__(self, input_channels, nr_lattice_vertices, nr_lattice_features, nr_resolutions, boundary_primitive, nr_samples_per_ray, nr_iters_for_c2f):
+    def __init__(self, in_channels, boundary_primitive, nr_samples_per_ray, nr_iters_for_c2f):
         super(NerfHash, self).__init__()
 
-        # self.boundary_primitive=boundary_primitive
+        self.in_channels=in_channels
+        self.boundary_primitive=boundary_primitive
 
-        self.nr_lattice_features=nr_lattice_features
 
-        self.reduction_lattice="concat" #sum, concat
-        # self.reduction_lattice="sum" #sum, concat
-
-        # self.lattice_type="grid" #grid, permuto
-        # self.lattice_type="permuto" #grid, permuto
-        self.lattice_type="permuto_monolithic" #the same as permuto but it does the slicing from all levels at the same time and it's way faster
-
-        self.mlp_type="pytorch"
-        # self.mlp_type="tinycudann"
-
+        #create encoding
+        pos_dim=in_channels
+        capacity=pow(2,18) #2pow18
+        nr_levels=24 
+        nr_feat_per_level=2 
+        coarsest_scale=1.0 
+        finest_scale=0.0001 
+        scale_list=np.geomspace(coarsest_scale, finest_scale, num=nr_levels)
+        self.encoding=permuto_enc.PermutoEncoding(pos_dim, capacity, nr_levels, nr_feat_per_level, scale_list, appply_random_shift_per_level=True, concat_points=True, concat_points_scaling=1)       
 
 
 
 
 
         # self.pick_rand_rows= RandRowPicker()
-        self.pick_rand_pixels= RandPixelPicker(low_discrepancy=False) #do NOT use los discrepancy for now, it seems to align some of the rays to some directions so maybe it's not that good of an idea
-        self.pick_patch_pixels= PatchPixelPicker()
-        self.pick_patches_pixels= PatchesPixelPicker()
-        self.pick_patch_and_rand_pixels= PatchAndRandPixelPicker(low_discrepancy=False)
-        self.pixel_sampler=PixelSampler()
+        # self.pick_rand_pixels= RandPixelPicker(low_discrepancy=False) #do NOT use los discrepancy for now, it seems to align some of the rays to some directions so maybe it's not that good of an idea
+        # self.pick_patch_pixels= PatchPixelPicker()
+        # self.pick_patches_pixels= PatchesPixelPicker()
+        # self.pick_patch_and_rand_pixels= PatchAndRandPixelPicker(low_discrepancy=False)
+        # self.pixel_sampler=PixelSampler()
         self.create_rays=CreateRaysModule()
-        self.ray_sampler=NerfUniformSampler(boundary_primitive, nr_samples_per_ray)
-        self.ray_sampler_bg=NerfBGSampler(boundary_primitive, nr_samples_per_ray)
-        # self.ray_sampler=NerfSampler(boundary_primitive, N_initial_samples=64, N_samples_importance=64)
-        self.volume_renderer=VolumeRenderingNerf()
+        # self.ray_sampler=NerfUniformSampler(boundary_primitive, nr_samples_per_ray)
+        # self.ray_sampler_bg=NerfBGSampler(boundary_primitive, nr_samples_per_ray)
+        # self.volume_renderer=VolumeRenderingNerf()
         self.volume_renderer_general=VolumeRenderingGeneralModule()
 
-        self.nr_resolutions=nr_resolutions
-        self.slice_lattice=SliceLatticeWithCollisionsModule()
-        # self.slice_lattice=SliceLatticeWithCollisionsDifferentiableModule(smooth_barycentric=False)
-        self.slice_lattice_monolithic=SliceLatticeWithCollisionsFastMRMonolithicModule()
-
-
-        coarsest_sigma=1.0
-        finest_sigma=0.0001
-        self.sigmas_list=np.geomspace(coarsest_sigma, finest_sigma, num=nr_resolutions) #the smaller the value, the finer the lattice
-        self.scale_factor=Lattice.compute_scale_factor_tensor(self.sigmas_list,input_channels)
-
-
-        if self.lattice_type=="permuto":
-            self.lattice_values_list = torch.nn.ParameterList( )
-            #the 0.1 to 0.0001 works 
-            # coarsest_sigma=0.1
-            # finest_sigma=0.0001
-            #attempt 2
-            for i in range(nr_resolutions):
-                self.lattice_values_list.append(  torch.nn.Parameter( torch.randn( nr_lattice_vertices, nr_lattice_features  )*1e-4 , requires_grad=True)  )
-        if self.lattice_type=="permuto_monolithic":
-            lattice_values_list_raw=[]
-            # init_list=np.geomspace(1e-1, 1e-6, num=nr_resolutions)
-            for i in range(nr_resolutions):
-                lattice_values_list_raw.append( torch.randn( nr_lattice_vertices, nr_lattice_features  )*1e-4  )
-            #make a monolithic version because we want to also use the monolithic slicer
-            self.lattice_values_monolithic=torch.cat(lattice_values_list_raw,1)
-            self.lattice_values_monolithic=self.lattice_values_monolithic.view(nr_lattice_vertices, nr_resolutions, nr_lattice_features).permute(1,0,2).contiguous() #get it to [nr_resolutions, nr_vertices, nr_features]
-            self.lattice_values_monolithic=torch.nn.Parameter(self.lattice_values_monolithic)
-        elif self.lattice_type=="grid":
-            #make dense 3D grid
-            coarsest_grid_size=2
-            finest_grid_size=256
-            self.grid_size_list=np.geomspace(coarsest_grid_size, finest_grid_size, num=nr_resolutions)
-            self.grid_3d_list = torch.nn.ParameterList()
-            for i in range(nr_resolutions):
-                cur_grid_size=int(self.grid_size_list[i])
-                print("cur_grid_size",cur_grid_size)
-                self.grid_3d_list.append( torch.nn.Parameter( torch.randn( 1, nr_lattice_features, cur_grid_size, cur_grid_size, cur_grid_size  )*1e-4 , requires_grad=True)  )
-
-
-        nr_resolutions_to_slice=nr_resolutions
-        if self.reduction_lattice=="sum":
-            nr_resolutions_to_slice=1
-
-        #since we store also the points as additional features, we add some sort of extra resolutions
-        nr_resolutions_extra=int(np.ceil(float(input_channels)/nr_lattice_features)); 
+        
 
         self.nr_feat_for_rgb=64
-        # if self.mlp_type=="pytorch":
-        self.mlp_feat_and_density= nn.Sequential(
-            torch.nn.Linear(nr_lattice_features*nr_resolutions_to_slice+nr_resolutions_extra*nr_lattice_features, 64),
-            # torch.nn.Mish(), # DO NOT USE MIsh, the lattice values can be qutie high and the exp here overflows
-            # torch.nn.SiLU(),
-            # torch.nn.ReLU(), 
+        self.mlp_feat_and_density= torch.nn.Sequential(
+            torch.nn.Linear(self.encoding.output_dims(), 64),
             torch.nn.GELU(),
             torch.nn.Linear(64,64),
-            # torch.nn.Mish(),
-            # torch.nn.SiLU(),
-            # torch.nn.ReLU(), 
             torch.nn.GELU(),
             torch.nn.Linear(64,64),
-            # torch.nn.Mish(),
-            # torch.nn.SiLU(),
-            # torch.nn.ReLU(), 
             torch.nn.GELU(),
             torch.nn.Linear(64,self.nr_feat_for_rgb+1) 
         )
         apply_weight_init_fn(self.mlp_feat_and_density, leaky_relu_init, negative_slope=0.0)
-        # leaky_relu_init(self.mlp_feat_and_density[-1], negative_slope=1.0)
-
-
-        # self.mlp_feat_and_density=MLP(in_channels=nr_lattice_features*nr_resolutions_to_slice, hidden_dim=64, out_channels=self.nr_feat_for_rgb+1, nr_layers=2, last_layer_linear_init=False)
-
-        # elif self.mlp_type=="tinycudann":
-        #     mlp_tcnn_config={
-        #         # "otype": "FullyFusedMLP",
-        #         "otype": "CutlassMLP",
-        #         "activation": "ReLU",
-        #         "output_activation": "None",
-        #         "n_neurons": 64,
-        #         "n_hidden_layers": 3
-        #     }
-        #     self.mlp_feat_and_density = tcnn.Network(
-        #         nr_lattice_features*nr_resolutions_to_slice, self.nr_feat_for_rgb+1,
-        #         mlp_tcnn_config
-        #     )
-        # self.tracer_mlp=TorchScriptTraceWrapper(self.mlp_feat_and_density)
-
+       
        
 
-        self.mlp_rgb= nn.Sequential(
+        self.mlp_rgb= torch.nn.Sequential(
             torch.nn.Linear(self.nr_feat_for_rgb+16, 64),
-            torch.nn.Mish(),
+            torch.nn.GELU(),
             torch.nn.Linear(64, 64),
-            torch.nn.Mish(),
+            torch.nn.GELU(),
             torch.nn.Linear(64,3),
         )
         apply_weight_init_fn(self.mlp_rgb, leaky_relu_init, negative_slope=0.0)
         leaky_relu_init(self.mlp_rgb[-1], negative_slope=1.0)
         
 
-        # self.mlp= SirenMLP(in_channels=nr_lattice_features*nr_resolutions_to_slice, hidden_dim=32, out_channels=4, nr_layers=2, scale_init=3)
-
-        # self.mlp= GaussMLP(in_channels=nr_lattice_features*nr_resolutions_to_slice, hidden_dim=32, out_channels=4, nr_layers=2, sigma=0.05)
-
-        # self.mod_sin=ModulatedSiren(in_channels_positions=3, in_channels_features=nr_lattice_features*nr_resolutions_to_slice, hidden_dim=32, out_channels=4, nr_layers=2, scale_init=90, flip_modulation=True)
-
-        #randomly shift the cloud at each resolution in order to avoid too many hash collisions
-        self.random_shift_list=[]
-        for i in range(nr_resolutions):
-            self.random_shift_list.append(   torch.randn( 1, input_channels)*10  )
-        self.random_shift_monolithic=torch.nn.Parameter( torch.cat(self.random_shift_list,0) ) #we make it a parameter just so it gets saved when we checkpoint
-
-
-        self.rgb_padding = 0.001  # Padding added to the RGB outputs.
-
 
         self.softplus=torch.nn.Softplus()
         self.sigmoid = torch.nn.Sigmoid()
-        self.mish=torch.nn.Mish()
+        self.gelu=torch.nn.GELU()
 
 
 
-        self.c2f=Coarse2Fine(self.nr_resolutions)
+        self.c2f=permuto_enc.Coarse2Fine(nr_levels)
         self.nr_iters_for_c2f=nr_iters_for_c2f
-        # self.nr_iters_for_c2f=1
+        self.last_iter_nr=sys.maxsize
 
     
     # def forward(self, ray_origins, ray_dirs, ls, iter_nr, nr_samples_per_ray):
-    def forward(self, samples_pos, samples_dirs, ls, iter_nr, model_colorcal=None, img_indices=None, ray_start_end_idx=None, nr_rays=None):
+    def forward(self, samples_pos, samples_dirs, iter_nr, model_colorcal=None, img_indices=None, ray_start_end_idx=None, nr_rays=None):
 
-        # assert points.shape[1] == 3, "ray_samples_flat should be nx3"
 
-        # window=self.c2f(iter_nr*0.0001) #helps to converge the radiance of the object in the center and not put radiance on the walls of the bounding box
+        assert samples_pos.shape[1] == self.in_channels, "points should be N x in_channels"
+
+        self.last_iter_nr=iter_nr
+
+       
         window=self.c2f( map_range_val(iter_nr, 0.0, self.nr_iters_for_c2f, 0.3, 1.0   ) ) #helps to converge the radiance of the object in the center and not put radiance on the walls of the bounding box
-        # window=(window>0.0)*1.0
-        # print("window", window)
-
-
-
-        #given the rays, create points
-        # nr_rays=ray_samples.shape[0]
-        # nr_samples_per_ray=ray_samples.shape[1]
-        # samples_dir=ray_samples.shape[2] #should usually be 3 but it can be 4 when we use it as a nerf++
-        # points=ray_samples.view(-1,samples_dir)
-        # nr_times_to_repeat=int(points.shape[0]/ray_dirs.view(-1,3).shape[0])
-
-        # if iter_nr%100==0:
-            # show_points(points,"points")
+        
 
         points=samples_pos
-
-
-
-        TIME_START("slice_full_rgb")
-        ray_features_full=None
-        if self.lattice_type=="permuto":
-            ray_features_list=[]
-            for i in range(self.nr_resolutions):
-                #set the lattice values to zero because we will delta them with the parameters
-                # print("self.sigmas_list[i]", self.sigmas_list[i])
-                ls.set_sigma(self.sigmas_list[i])
-                values=self.lattice_values_list[i] * window[i]
-                ray_features, splatting_indices, splatting_weights=self.slice_lattice(values, ls, points+self.random_shift_list[i] )
-                ray_features_list.append(ray_features)
-        elif self.lattice_type=="permuto_monolithic":
-            ray_features_full, splatting_indices, splatting_weights=self.slice_lattice_monolithic(self.lattice_values_monolithic, self.scale_factor, ls, points, self.random_shift_monolithic, window.view(-1), concat_points=True, points_scaling=0)
-        elif self.lattice_type=="grid":
-            #slice 3d grid
-            points_scaled=points*1.9 #scale from [-0.5, 0.5] to [-1, 1]
-            points_scaled=points_scaled.view(1,1,1,-1,3)
-            ray_features_list=[]
-            for i in range(len(self.grid_3d_list)):
-                values= self.grid_3d_list[i] * window[i]
-                # ray_features=grid_sample_3d(values, points_scaled)
-                ray_features=torch.nn.functional.grid_sample(values, points_scaled)
-                ray_features=ray_features.transpose(1,4)
-                ray_features=ray_features.view(-1,self.nr_lattice_features)
-                ray_features_list.append(ray_features)
-        TIME_END("slice_full_rgb")
-
-
-        #reduce the features
-        if ray_features_full==None:
-            if self.reduction_lattice=="concat":
-                ray_features_full=torch.cat(ray_features_list, 1)
-            elif self.reduction_lattice=="sum":
-                ray_features_full=torch.stack(ray_features_list, dim=0).sum(dim=0)
-                print("ray_features_full", ray_features_full.shape)
-
-        # ray_dirs_lin=ray_dirs.view(-1,3)
-        # ray_dirs_encoded=spherical_harmonics_basis(ray_dirs_lin)
-        # print("ray_dirs_encoded", ray_dirs_encoded.shape)
-        # print("ray_features_full", ray_features_full.shape)
-        # nr_times_to_repeat=int(points.shape[0]/ray_dirs_lin.shape[0])
-        # ray_dirs_encoded_repeted=ray_dirs_encoded.view(-1,1,9).repeat(1,nr_times_to_repeat,1).view(-1,9)
-        # print("ray_dirs_encoded_repeted", ray_dirs_encoded_repeted.shape)
-        # ray_dirs_repeted=ray_dirs.view(-1,1,3).repeat(1,nr_times_to_repeat,1).view(-1,3)
-
-        # print("feat", feat.shape)
-
-        # gradient=F.normalize(gradient, dim=1)
-
+        point_features=self.encoding(points, window.view(-1)) 
         #dirs encoded with spherical harmonics 
-        TIME_START("encode_dirs")
         with torch.set_grad_enabled(False):
-            samples_dirs_enc=InstantNGP.spherical_harmonics(samples_dirs,4)
-            # ray_dirs_enc_repeted=ray_dirs_enc.view(-1,1,16).repeat(1,nr_times_to_repeat,1).contiguous().view(-1,16)
-        TIME_END("encode_dirs")
+            samples_dirs_enc=HashSDF.spherical_harmonics(samples_dirs,4)
 
 
-        # x=torch.cat([points,ray_features_full],1)
-        # x=torch.cat([points*1e-3,ray_features_full],1)
-        # x=torch.cat([ray_features_full, ray_dirs_encoded_repeted],1)
-        # x=torch.cat([ray_features_full, ray_dirs_encoded_repeted, gradient],1)
-        # x=torch.cat([ray_features_full, ray_dirs_repeted, gradient],1)
-        # x=torch.cat([ray_features_full, ray_dirs_repeted],1)
-        # x=torch.cat([ray_features_full, ray_dirs_encoded_repeted, feat],1)
-        # x=torch.cat([ray_features_full, ray_dirs_enc_repeted],1)
-        # rgba=self.mlp(x)
 
         #predict density without using directions
-        feat_and_density=self.mlp_feat_and_density(ray_features_full)
-        # feat_and_density=self.tracer_mlp(self.mlp_feat_and_density(ray_features_full))
+        feat_and_density=self.mlp_feat_and_density(point_features)
         density=feat_and_density[:,0:1]
         feat_rgb=feat_and_density[:,1:self.nr_feat_for_rgb+1]
 
         #predict rgb using directions of ray
-        # print("feat_rgb",feat_rgb.shape)
-        # print("samples_dirs_enc",samples_dirs_enc.shape)
-        feat_rgb_with_dirs=torch.cat([ self.mish(feat_rgb), samples_dirs_enc],1)
+        feat_rgb_with_dirs=torch.cat([ self.gelu(feat_rgb), samples_dirs_enc],1)
         rgb=self.mlp_rgb(feat_rgb_with_dirs)
 
-
-        #attemtp 2 
-        # density=density.view(nr_rays, nr_samples_per_ray, 1)
-        # rgb=rgb.view(nr_rays, nr_samples_per_ray, 3)
         #activate
         density=self.softplus(density) #similar to mipnerf
 
 
         if model_colorcal is not None and img_indices is not None:
             if ray_start_end_idx is not None:
-                TIME_START("colorcal")
                 rgb=model_colorcal.calib_RGB_samples_packed(rgb, img_indices, ray_start_end_idx )
-                TIME_END("colorcal")
             else:
                 rgb=model_colorcal.calib_RGB_rays_reel(rgb, img_indices, nr_rays )
 
         rgb=self.sigmoid(rgb)
-        #concat
-        # rgba_field=torch.cat([rgb,density],1) #nr_samples_total,4
-
-
-        # rgba=rgba.view(nr_rays, nr_samples_per_ray, 4)
-        # density=self.softplus( rgba[:,:,3:4]) #similar to mipnerf
-        # rgb=rgba[:,:,0:3]
-        # rgb=self.sigmoid(rgb)
-        # # rgb = rgb * (1 + 2 * self.rgb_padding) - self.rgb_padding #DO not use padding
-
-        # rgba_field=torch.cat([rgb,density],2) #nr_rays,nr_samples,4
-        # print("radiance_field",radiance_field)
-
-        # pred_rgb, disp_map, acc_map, weights, depth_map=volume_render_radiance_field(radiance_field, rand_depth_slices, ray_dirs)
-
-        # print("pred rgb", pred_rgb)
-        # print("weights", weights)
-        
 
 
         return rgb, density
-        # return pred_rgb
-        # return rgba_field
 
-    def get_only_density(self, ray_samples, ls, iter_nr, model_colorcal=None, img_indices=None):
+    def get_only_density(self, ray_samples, iter_nr, model_colorcal=None, img_indices=None):
 
 
         # window=self.c2f(iter_nr*0.0001) #helps to converge the radiance of the object in the center and not put radiance on the walls of the bounding box
@@ -3732,19 +3201,11 @@ class NerfHash(torch.nn.Module):
       
 
 
-        TIME_START("slice_only_for_density")
-        if self.lattice_type=="permuto_monolithic":
-            ray_features_full, splatting_indices, splatting_weights=self.slice_lattice_monolithic(self.lattice_values_monolithic, self.scale_factor, ls, points, self.random_shift_monolithic, window.view(-1), concat_points=True, points_scaling=0)
-        else:
-            print("did not implement other lattice types yet here")
-            exit(1)
-        TIME_END("slice_only_for_density")
+        point_features=self.encoding(points, window.view(-1))  
 
 
         #predict density without using directions
-        # TIME_START("MLP_D")
-        feat_and_density=self.mlp_feat_and_density(ray_features_full)
-        # TIME_END("MLP_D")
+        feat_and_density=self.mlp_feat_and_density(point_features)
         density=feat_and_density[:,0:1]
         density=self.softplus(density) #similar to mipnerf
 
@@ -4158,9 +3619,9 @@ class Colorcal(torch.nn.Module):
         self.idx_with_fixed_calib=idx_with_fixed_calib 
 
         #instead of storing the weight which should be 1, we store the weight delta from 1. This allows us to use weight decay for this module which will keep the weight_delta close to zero 
-        self.weight_delta = nn.Parameter(
+        self.weight_delta = torch.nn.Parameter(
                 torch.zeros(nr_cams, 3))
-        self.bias = nn.Parameter(
+        self.bias = torch.nn.Parameter(
                 torch.zeros(nr_cams, 3))
 
 

@@ -13,29 +13,23 @@ public:
         return std::shared_ptr<TrainParams>( new TrainParams(std::forward<Args>(args)...) );
     }
 
-    bool with_viewer();
+    // bool with_viewer();
     bool with_visdom();
     bool with_tensorboard();
     bool with_wandb();
-    std::string dataset_name();
-    float lr();
-    float weight_decay();
+    // float lr();
     bool save_checkpoint();
-    std::string checkpoint_path();
 
 
 private:
     TrainParams(const std::string config_file);
     void init_params(const std::string config_file);
 
-    std::string m_dataset_name;
-    bool m_with_viewer; //wether the training script will show in a viewer the gt_cloud and prediciton cloud
+    // bool m_with_viewer;
     bool m_with_visdom;
     bool m_with_tensorboard;
     bool m_with_wandb;
-    float m_lr; 
-    float m_weight_decay;
+    // float m_lr; 
     bool m_save_checkpoint;
-    std::string m_checkpoint_path;
 
 };
