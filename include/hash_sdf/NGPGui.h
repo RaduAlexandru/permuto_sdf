@@ -22,6 +22,7 @@ public:
 
     bool m_do_training;
     bool m_control_view;
+    float m_time_val;
     float m_c2f_progress;
     int m_nr_samples_per_ray;
     float m_inv_s;

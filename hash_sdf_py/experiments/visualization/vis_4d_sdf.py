@@ -87,7 +87,7 @@ def run():
 
 
             vis_width=800
-            vis_height=800
+            vis_height=510
             if first_time_getting_control or ngp_gui.m_control_view:
                 first_time_getting_control=False
                 frame=Frame()
@@ -107,11 +107,11 @@ def run():
             show_points(ray_end, "ray_end", color_per_vert=ray_end_normal_vis, normal_per_vert=ray_end_normal)
             ray_end_normal=F.normalize(ray_end_gradient_converged, dim=1)
             ray_end_normal_vis=(ray_end_normal+1.0)*0.5
-            ray_end_normal_tex=ray_end_normal_vis.view(vis_width, vis_height, 3)
+            ray_end_normal_tex=ray_end_normal_vis.view(vis_height, vis_width, 3)
             ray_end_normal_img=tex2img(ray_end_normal_tex)
             Gui.show(tensor2mat(ray_end_normal_img), "ray_end_normal_img")
             #create an alpha mask for the normals
-            is_converged_tex=is_converged.view(vis_width, vis_height, 1)
+            is_converged_tex=is_converged.view(vis_height, vis_width, 1)
             is_converged_img=tex2img(is_converged_tex)*1.0
             ray_end_normal_img_alpha=torch.cat([ray_end_normal_img,is_converged_img],1)
             Gui.show(tensor2mat(ray_end_normal_img_alpha), "ray_end_normal_img_alpha")

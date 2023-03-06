@@ -166,7 +166,7 @@ def run():
                 show_points(ray_end, "ray_end", color_per_vert=ray_end_normal_vis, normal_per_vert=ray_end_normal)
                 ray_end_normal=F.normalize(ray_end_gradient_converged, dim=1)
                 ray_end_normal_vis=(ray_end_normal+1.0)*0.5
-                ray_end_normal_tex=ray_end_normal_vis.view(vis_width, vis_height, 3)
+                ray_end_normal_tex=ray_end_normal_vis.view(vis_height, vis_width, 3)
                 ray_end_normal_img=tex2img(ray_end_normal_tex)
                 Gui.show(tensor2mat(ray_end_normal_img), "ray_end_normal_img")
 

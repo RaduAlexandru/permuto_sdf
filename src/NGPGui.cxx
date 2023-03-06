@@ -17,6 +17,7 @@
 NGPGui::NGPGui(const std::shared_ptr<easy_pbr::Viewer>& view):
     m_do_training(true),
     m_control_view(false),
+    m_time_val(0.0),
     m_c2f_progress(0),
     // m_nr_samples_per_ray(1000),
     // m_inv_s(512),
@@ -86,6 +87,7 @@ void NGPGui::post_draw(easy_pbr::Viewer& view){
 
     // ImGui::Checkbox("do_training", &m_do_training);
     ImGui::Checkbox("control_view", &m_control_view);
+    ImGui::SliderFloat("time_val", &m_time_val, 0.0, 1.0) ;
 
     //progress bar for c2f
     ImGui::ProgressBar(m_c2f_progress, ImVec2(0.0f, 0.0f));
