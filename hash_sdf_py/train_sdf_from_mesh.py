@@ -6,7 +6,6 @@ import torch.nn.functional as F
 import sys
 import os
 import numpy as np
-import time as time_module
 
 import easypbr
 from easypbr  import *
