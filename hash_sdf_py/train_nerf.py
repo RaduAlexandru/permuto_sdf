@@ -126,6 +126,7 @@ def run():
     while ( True ): 
         model.train(phase.grad)
         model_bg.train(phase.grad)
+        loss=0 
 
         # #forward
         cb.before_forward_pass() 
@@ -150,13 +151,16 @@ def run():
         #compute rgb and density
         rgb_samples, density_samples=model( fg_ray_samples_packed.samples_pos, fg_ray_samples_packed.samples_dirs, phase.iter_nr, model_colorcal, img_indices, ray_start_end_idx=fg_ray_samples_packed.ray_start_end_idx) 
         #volumetric integration
-        weights, weight_sum, bg_transmittance= model.volume_renderer_nerf.compute_weights(fg_ray_samples_packed, density_samples.view(-1,1))
+        weights, weights_sum, bg_transmittance= model.volume_renderer_nerf.compute_weights(fg_ray_samples_packed, density_samples.view(-1,1))
         pred_rgb=model.volume_renderer_nerf.integrate(fg_ray_samples_packed, rgb_samples, weights)
            
                 
 
         #run nerf bg
-        if not args.with_mask:
+        if args.with_mask:
+            loss_mask=torch.nn.functional.binary_cross_entropy(weights_sum.clip(1e-3, 1.0 - 1e-3), gt_mask)
+            loss+=loss_mask*0.1
+        else: #have to model the background
             #compute rgb and density
             rgb_samples_bg, density_samples_bg=model_bg( bg_ray_samples_packed.samples_pos_4d, bg_ray_samples_packed.samples_dirs, phase.iter_nr, model_colorcal, img_indices, ray_start_end_idx=bg_ray_samples_packed.ray_start_end_idx) 
             #volumetric integration
@@ -171,7 +175,6 @@ def run():
 
 
 
-        loss=0 
         loss_rgb= ((gt_selected - pred_rgb)**2*does_ray_intersect_box*1.0 ).mean() 
         loss+=loss_rgb
 
@@ -211,8 +214,6 @@ def run():
                     should_visualize_things=True
             if phase.iter_nr%300==0 or phase.iter_nr==1 or should_visualize_things :
 
-                # print("model colorcal weight min max",model_colorcal.weight_delta.min(), model_colorcal.weight_delta.max())
-                # print("model colorcal bias min max",model_colorcal.bias.min(), model_colorcal.bias.max())
 
                 if with_viewer:
 
@@ -241,40 +242,39 @@ def run():
                         frustum_mesh_controlable=frame_controlable.create_frustum_mesh(0.1)
                         Scene.show(frustum_mesh_controlable,"frustum_mesh_controlable")
 
-                    #forward all the pixels
-                    # if run_test:
-                    # rand_indices=model.pick_rand_pixels(frame_controlable, nr_samples=1, pick_all_pixels=True) 
+                    #create all rays
                     ray_origins, ray_dirs=model.create_rays(frame_controlable, rand_indices=None) # ray origins and dirs as nr_pixels x 3
                     ray_points_entry, ray_t_entry, ray_points_exit, ray_t_exit, does_ray_intersect_box=aabb.ray_intersection(ray_origins, ray_dirs)
+                    fg_ray_samples_packed, bg_ray_samples_packed = create_samples(args, hyperparams, ray_origins, ray_dirs, model.training, occupancy_grid, aabb)
 
                     # pred_rgb, ray_samples = run_nerf(model, model_bg, lattice, phase, ray_origins, ray_dirs, nr_samples_per_ray)
 
-                    if hyperparams.use_occupancy_grid:
-                        #get also the ray through occupancy
-                        ray_samples_packed=occupancy_grid.compute_samples_in_occupied_regions(ray_origins, ray_dirs, ray_t_entry, ray_t_exit, hyperparams.min_dist_between_samples, hyperparams.max_nr_samples_per_ray, model.training)
-                        # print("initial_ray_samples_packed, cur_nr_samples is ", ray_samples_packed.cur_nr_samples)
-                        # print("initial_ray_samples_packed, max_nr_samples is ", ray_samples_packed.max_nr_samples)
-                        # print("initial_ray_samples_packed, samples_pos is ", ray_samples_packed.samples_pos.shape)
-                        # print("initial_ray_samples_packed, index_max is ", ray_samples_packed.ray_start_end_idx.max())
-                        ray_samples_packed=ray_samples_packed.get_valid_samples()
-                        # print("after, cur_nr_samples is ", ray_samples_packed.cur_nr_samples)
-                        # print("after, max_nr_samples is ", ray_samples_packed.max_nr_samples)
-                        # print("after, samples_pos is ", ray_samples_packed.samples_pos.shape)
+                    # if hyperparams.use_occupancy_grid:
+                    #     #get also the ray through occupancy
+                    #     ray_samples_packed=occupancy_grid.compute_samples_in_occupied_regions(ray_origins, ray_dirs, ray_t_entry, ray_t_exit, hyperparams.min_dist_between_samples, hyperparams.max_nr_samples_per_ray, model.training)
+                    #     # print("initial_ray_samples_packed, cur_nr_samples is ", ray_samples_packed.cur_nr_samples)
+                    #     # print("initial_ray_samples_packed, max_nr_samples is ", ray_samples_packed.max_nr_samples)
+                    #     # print("initial_ray_samples_packed, samples_pos is ", ray_samples_packed.samples_pos.shape)
+                    #     # print("initial_ray_samples_packed, index_max is ", ray_samples_packed.ray_start_end_idx.max())
+                    #     ray_samples_packed=ray_samples_packed.get_valid_samples()
+                    #     # print("after, cur_nr_samples is ", ray_samples_packed.cur_nr_samples)
+                    #     # print("after, max_nr_samples is ", ray_samples_packed.max_nr_samples)
+                    #     # print("after, samples_pos is ", ray_samples_packed.samples_pos.shape)
 
 
 
 
-                    #create ray samples
-                    # z_vals, dummy = model.ray_sampler.get_z_vals(ray_origins, ray_dirs, ray_t_exit, model, lattice, phase.iter_nr)
-                    # ray_samples = ray_origins.unsqueeze(1) + z_vals.unsqueeze(2) * ray_dirs.unsqueeze(1)
-                    # #repeat also the direction so that we have one direction for each sample
-                    # sample_dirs=ray_dirs.view(-1,1,3).repeat(1,nr_samples_per_ray,1).contiguous().view(-1,3)
+                    # #create ray samples
+                    # # z_vals, dummy = model.ray_sampler.get_z_vals(ray_origins, ray_dirs, ray_t_exit, model, lattice, phase.iter_nr)
+                    # # ray_samples = ray_origins.unsqueeze(1) + z_vals.unsqueeze(2) * ray_dirs.unsqueeze(1)
+                    # # #repeat also the direction so that we have one direction for each sample
+                    # # sample_dirs=ray_dirs.view(-1,1,3).repeat(1,nr_samples_per_ray,1).contiguous().view(-1,3)
 
-                    #create ray samples for bg
-                    if not args.with_mask:
-                        # z_vals_bg, dummy, ray_samples_bg_4d, ray_samples_bg = model_bg.ray_sampler_bg.get_z_vals_bg(ray_origins, ray_dirs, model, lattice, phase.iter_nr)
-                        # sample_dirs_bg=ray_dirs.view(-1,1,3).repeat(1,nr_samples_bg,1).contiguous().view(-1,3)
-                        ray_samples_packed_bg= RaySampler.compute_samples_bg(ray_origins, ray_dirs, ray_t_exit, hyperparams.nr_samples_bg, aabb.m_radius, aabb.m_center_tensor, model.training, False)
+                    # #create ray samples for bg
+                    # if not args.with_mask:
+                    #     # z_vals_bg, dummy, ray_samples_bg_4d, ray_samples_bg = model_bg.ray_sampler_bg.get_z_vals_bg(ray_origins, ray_dirs, model, lattice, phase.iter_nr)
+                    #     # sample_dirs_bg=ray_dirs.view(-1,1,3).repeat(1,nr_samples_bg,1).contiguous().view(-1,3)
+                    #     ray_samples_packed_bg= RaySampler.compute_samples_bg(ray_origins, ray_dirs, ray_t_exit, hyperparams.nr_samples_bg, aabb.m_radius, aabb.m_center_tensor, model.training, False)
 
 
 
@@ -282,24 +282,48 @@ def run():
                     # rgb_field, density_field=model( ray_samples, ray_dirs, lattice, phase.iter_nr) 
                     # rgb_samples=rgba_field[:,:,0:3]
                     # radiance_samples=rgba_field[:,:,3]
-                    if not hyperparams.use_occupancy_grid:
-                        rgb_field, density_field=model( ray_samples.view(-1,3), sample_dirs.view(-1,3), lattice, phase.iter_nr) 
-                        rgb_samples=rgb_field.view(vis_height*vis_width,nr_samples_per_ray,-1)
-                        radiance_samples=density_field.view(vis_height*vis_width,nr_samples_per_ray)
-                        #get weights for the integration
-                        weights, disp_map, acc_map, depth_map, bg_transmittance=model.volume_renderer(radiance_samples, z_vals, ray_t_exit)
-                        pred_rgb = torch.sum(weights.unsqueeze(-1) * rgb_samples, 1)
-                    else:
-                        #fused
-                        #run the model again to get the rgba for the samples
-                        rgb_samples, density_samples=model( ray_samples_packed.samples_pos, ray_samples_packed.samples_dirs, phase.iter_nr) 
-                        # rgb_samples_fused=rgba_field_fused[:,0:3]
-                        # radiance_samples_fused=rgba_field_fused[:,3]
-                        #volrender
-                        pred_rgb_fused, pred_depth_fused, bg_transmittance, _= model.volume_renderer_general.volume_render_nerf(ray_samples_packed, rgb_samples.view(-1,3), density_samples.view(-1,1), ray_t_exit, True)
-                        # print("pred_rgb_fused", pred_rgb_fused)
+                    # if not hyperparams.use_occupancy_grid:
+                    #     rgb_field, density_field=model( ray_samples.view(-1,3), sample_dirs.view(-1,3), lattice, phase.iter_nr) 
+                    #     rgb_samples=rgb_field.view(vis_height*vis_width,nr_samples_per_ray,-1)
+                    #     radiance_samples=density_field.view(vis_height*vis_width,nr_samples_per_ray)
+                    #     #get weights for the integration
+                    #     weights, disp_map, acc_map, depth_map, bg_transmittance=model.volume_renderer(radiance_samples, z_vals, ray_t_exit)
+                    #     pred_rgb = torch.sum(weights.unsqueeze(-1) * rgb_samples, 1)
+                    # else:
+                    #     #fused
+                    #     #run the model again to get the rgba for the samples
+                    #     rgb_samples, density_samples=model( ray_samples_packed.samples_pos, ray_samples_packed.samples_dirs, phase.iter_nr) 
+                    #     # rgb_samples_fused=rgba_field_fused[:,0:3]
+                    #     # radiance_samples_fused=rgba_field_fused[:,3]
+                    #     #volrender
+                    #     pred_rgb_fused, pred_depth_fused, bg_transmittance, _= model.volume_renderer_general.volume_render_nerf(ray_samples_packed, rgb_samples.view(-1,3), density_samples.view(-1,1), ray_t_exit, True)
+                    #     # print("pred_rgb_fused", pred_rgb_fused)
                         
-                        pred_rgb=pred_rgb_fused
+                    #     pred_rgb=pred_rgb_fused
+
+
+
+                    #foreground
+                    #compute rgb and density
+                    rgb_samples, density_samples=model( fg_ray_samples_packed.samples_pos, fg_ray_samples_packed.samples_dirs, phase.iter_nr, model_colorcal, img_indices, ray_start_end_idx=fg_ray_samples_packed.ray_start_end_idx) 
+                    #volumetric integration
+                    weights, weights_sum, bg_transmittance= model.volume_renderer_nerf.compute_weights(fg_ray_samples_packed, density_samples.view(-1,1))
+                    pred_rgb=model.volume_renderer_nerf.integrate(fg_ray_samples_packed, rgb_samples, weights)
+                    
+                            
+
+                    #run nerf bg
+                    if args.with_mask:
+                        pass
+                    else: #have to model the background
+                        #compute rgb and density
+                        rgb_samples_bg, density_samples_bg=model_bg( bg_ray_samples_packed.samples_pos_4d, bg_ray_samples_packed.samples_dirs, phase.iter_nr, model_colorcal, img_indices, ray_start_end_idx=bg_ray_samples_packed.ray_start_end_idx) 
+                        #volumetric integration
+                        weights_bg, weight_sum_bg, _= model_bg.volume_renderer_nerf.compute_weights(bg_ray_samples_packed, density_samples_bg.view(-1,1))
+                        pred_rgb_bg=model_bg.volume_renderer_nerf.integrate(bg_ray_samples_packed, rgb_samples_bg, weights_bg)
+                        #combine
+                        pred_rgb_bg = bg_transmittance.view(-1,1) * pred_rgb_bg
+                        pred_rgb = pred_rgb + pred_rgb_bg
 
                     #debug why is there one black pixel
                     # print("debugging the black pixel")
@@ -318,15 +342,15 @@ def run():
 
 
 
-                    #run nerf bg
-                    if not args.with_mask:
-                        rgb_samples_bg, density_samples_bg=model_bg( ray_samples_packed_bg.samples_pos_4d.view(-1,4), ray_samples_packed_bg.samples_dirs.view(-1,3), phase.iter_nr, model_colorcal, img_indices, nr_rays=hyperparams.nr_rays) 
-                        rgb_samples_bg=rgb_samples_bg.view(vis_height*vis_width, hyperparams.nr_samples_bg, 3)
-                        density_samples_bg=density_samples_bg.view(vis_height*vis_width, hyperparams.nr_samples_bg)
-                        pred_rgb_bg, pred_depth_bg, _, _= model.volume_renderer_general.volume_render_nerf(ray_samples_packed_bg, rgb_samples_bg.view(-1,3), density_samples_bg.view(-1,1), ray_t_exit, False)
-                        #combine attempt 3 like in https://github.com/lioryariv/volsdf/blob/a974c883eb70af666d8b4374e771d76930c806f3/code/model/network_bg.py#L96
-                        pred_rgb_bg = bg_transmittance.view(-1,1) * pred_rgb_bg
-                        pred_rgb = pred_rgb + pred_rgb_bg
+                    # #run nerf bg
+                    # if not args.with_mask:
+                    #     rgb_samples_bg, density_samples_bg=model_bg( ray_samples_packed_bg.samples_pos_4d.view(-1,4), ray_samples_packed_bg.samples_dirs.view(-1,3), phase.iter_nr, model_colorcal, img_indices, nr_rays=hyperparams.nr_rays) 
+                    #     rgb_samples_bg=rgb_samples_bg.view(vis_height*vis_width, hyperparams.nr_samples_bg, 3)
+                    #     density_samples_bg=density_samples_bg.view(vis_height*vis_width, hyperparams.nr_samples_bg)
+                    #     pred_rgb_bg, pred_depth_bg, _, _= model.volume_renderer_general.volume_render_nerf(ray_samples_packed_bg, rgb_samples_bg.view(-1,3), density_samples_bg.view(-1,1), ray_t_exit, False)
+                    #     #combine attempt 3 like in https://github.com/lioryariv/volsdf/blob/a974c883eb70af666d8b4374e771d76930c806f3/code/model/network_bg.py#L96
+                    #     pred_rgb_bg = bg_transmittance.view(-1,1) * pred_rgb_bg
+                    #     pred_rgb = pred_rgb + pred_rgb_bg
 
                         
 
