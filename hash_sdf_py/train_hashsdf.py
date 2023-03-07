@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 
-
-
 import torch
 import torch.nn.functional as F
 
@@ -63,7 +61,7 @@ class HyperParams:
     use_occupancy_grid=True
     nr_samples_bg=32
     min_dist_between_samples=0.0001
-    nr_samples_per_ray=64 #for the foreground
+    max_nr_samples_per_ray=64 #for the foreground
     nr_samples_imp_sampling=16
     do_imp_sampling=True #adds nr_samples_imp_samplingx2 more samples pery ray
     use_color_calibration=True

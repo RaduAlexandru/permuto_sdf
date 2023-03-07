@@ -25,12 +25,8 @@ from hash_sdf_py.utils.common_utils import tex2img
 from hash_sdf_py.utils.common_utils import colormap
 from hash_sdf_py.utils.aabb import AABB
 
-from hash_sdf_py.callbacks.callback import *
-from hash_sdf_py.callbacks.viewer_callback import *
-from hash_sdf_py.callbacks.visdom_callback import *
-from hash_sdf_py.callbacks.tensorboard_callback import *
-from hash_sdf_py.callbacks.state_callback import *
-from hash_sdf_py.callbacks.phase import *
+from hash_sdf_py.callbacks.callback_utils import *
+
 
 
 config_file="train_sdf_from_mesh.cfg"
@@ -77,11 +73,8 @@ def run():
 
 
 
-    cb_list = []
-    if(train_params.with_tensorboard()):
-        cb_list.append(TensorboardCallback(experiment_name))
-    cb_list.append(StateCallback())
-    cb = CallbacksGroup(cb_list)
+    
+    cb=create_callbacks(with_viewer, train_params, experiment_name, config_path)
     phases= [ Phase('train', None, grad=True) ] 
     phase=phases[0] #we usually switch between training and eval phases but here we only train 
 

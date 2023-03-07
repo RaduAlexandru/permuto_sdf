@@ -26,12 +26,7 @@ from hash_sdf_py.utils.common_utils import tex2img
 from hash_sdf_py.utils.common_utils import colormap
 from hash_sdf_py.utils.aabb import AABB
 
-from hash_sdf_py.callbacks.callback import *
-from hash_sdf_py.callbacks.viewer_callback import *
-from hash_sdf_py.callbacks.visdom_callback import *
-from hash_sdf_py.callbacks.tensorboard_callback import *
-from hash_sdf_py.callbacks.state_callback import *
-from hash_sdf_py.callbacks.phase import *
+from hash_sdf_py.callbacks.callback_utils import *
 
 
 config_file="train_4d_sdf.cfg"
@@ -39,6 +34,9 @@ config_file="train_4d_sdf.cfg"
 torch.manual_seed(0)
 torch.set_default_tensor_type(torch.cuda.FloatTensor)
 config_path=os.path.join( os.path.dirname( os.path.realpath(__file__) ) , '../config', config_file)
+
+with_viewer=True
+lr=1e-3
 
 
 #loads a sequence of meshes that have the same topology and samples points temporally from the meshes
@@ -138,13 +136,12 @@ def load_mesh_sequence(folder):
     
     return gt_points_time, gt_normals
 
-        
 
 
 def run():
     # #initialize the parameters used for training
     train_params=TrainParams.create(config_path)    
-    if train_params.with_viewer():
+    if with_viewer:
         view=Viewer.create(config_path)
         ngp_gui=NGPGui.create(view)
         view.m_camera.from_string("-0.837286  0.360068  0.310824 -0.0496414    -0.5285  -0.030986 0.846901   0.11083  0.235897 -0.152857 60 0.0502494 5024.94")
@@ -165,11 +162,7 @@ def run():
 
 
 
-    cb_list = []
-    if(train_params.with_tensorboard()):
-        cb_list.append(TensorboardCallback(experiment_name))
-    cb_list.append(StateCallback())
-    cb = CallbacksGroup(cb_list)
+    cb=create_callbacks(with_viewer, train_params, experiment_name, config_path)
     phases= [ Phase('train', None, grad=True) ] 
     phase=phases[0] #we usually switch between training and eval phases but here we only train 
 
@@ -179,7 +172,7 @@ def run():
     model.train(True)
 
     #optimizer
-    optimizer = torch.optim.AdamW (model.parameters(), amsgrad=False,  betas=(0.9, 0.99), eps=1e-15, weight_decay=0.0, lr=train_params.lr())
+    optimizer = torch.optim.AdamW (model.parameters(), amsgrad=False,  betas=(0.9, 0.99), eps=1e-15, weight_decay=0.0, lr=lr)
 
     first_time_getting_control=True
 
@@ -220,7 +213,7 @@ def run():
         cb.after_forward_pass(phase=phase, loss=loss.item(), lr=optimizer.param_groups[0]["lr"]) #visualizes the prediction 
 
         #update gui
-        if train_params.with_viewer():
+        if with_viewer:
             ngp_gui.m_c2f_progress=model.c2f.get_last_t()
 
 
@@ -271,7 +264,7 @@ def run():
 
         #finally just update the opengl viewer
         with torch.set_grad_enabled(False):
-            if train_params.with_viewer():
+            if with_viewer:
                 view.update()
 
 

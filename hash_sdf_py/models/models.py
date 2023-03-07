@@ -3071,7 +3071,7 @@ class RGB(torch.nn.Module):
 ###################NERF ################################
 class NerfHash(torch.nn.Module):
 
-    def __init__(self, in_channels, boundary_primitive, nr_samples_per_ray, nr_iters_for_c2f):
+    def __init__(self, in_channels, boundary_primitive, nr_iters_for_c2f):
         super(NerfHash, self).__init__()
 
         self.in_channels=in_channels

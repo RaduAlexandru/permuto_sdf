@@ -27,12 +27,7 @@ from hash_sdf_py.utils.common_utils import create_bb_mesh
 from hash_sdf_py.utils.common_utils import show_points
 from hash_sdf_py.utils.common_utils import lin2nchw
 
-from hash_sdf_py.callbacks.callback import *
-from hash_sdf_py.callbacks.viewer_callback import *
-from hash_sdf_py.callbacks.visdom_callback import *
-from hash_sdf_py.callbacks.tensorboard_callback import *
-from hash_sdf_py.callbacks.state_callback import *
-from hash_sdf_py.callbacks.phase import *
+from hash_sdf_py.callbacks.callback_utils import *
 
 
 
@@ -63,6 +58,20 @@ config_path=os.path.join( os.path.dirname( os.path.realpath(__file__) ) , '../co
 
 # #initialize the parameters used for training
 train_params=TrainParams.create(config_path)    
+class HyperParams:
+    lr= 1e-3
+    eikonal_weight=0.04
+    lr_milestones=[100000,150000,180000,190000]
+    iter_finish_training=200000
+    use_occupancy_grid=True
+    nr_samples_bg=32
+    min_dist_between_samples=0.0001
+    max_nr_samples_per_ray=64 #for the foreground
+    use_color_calibration=True
+    nr_rays=512
+    foreground_nr_iters_for_c2f=10000
+    background_nr_iters_for_c2f=10000
+hyperparams=HyperParams()
 
 
 
@@ -84,30 +93,6 @@ def run():
 
 
 
-
-
-    #params
-    nr_lattice_features=2
-    nr_resolutions=24
-    nr_rays=1024
-    nr_samples_per_ray=64
-    nr_samples_bg=32
-    #for the occupancy grid sampler
-    min_dist_between_samples=0.001
-    max_nr_samples_per_ray=64
-    scene_name=args.scene
-    with_mask=args.with_mask
-    use_home=True
-    use_all_imgs=True
-    do_reparametrization_to_4d=True
-    do_importance_sampling_bg=False
-    lr=1e-3
-    
-
-
-    
- 
-
     loader_train, loader_test= create_dataloader(config_path, args.dataset, args.scene, args.low_res, args.comp_name, args.with_mask)
 
     aabb = create_bb_for_dataset(args.dataset)
@@ -119,41 +104,24 @@ def run():
     tensor_reel=MiscDataFuncs.frames2tensors(loader_train.get_all_frames())
 
 
+    cb=create_callbacks(with_viewer, train_params, experiment_name, config_path)
 
 
-    cb_list = []
-    if(train_params.with_visdom()):
-        cb_list.append(VisdomCallback(experiment_name))
-    if(train_params.with_tensorboard()):
-        cb_list.append(TensorboardCallback(experiment_name))
-    if(with_viewer):
-        cb_list.append(ViewerCallback())
-    cb_list.append(StateCallback())
-    cb = CallbacksGroup(cb_list)
-
-
-    #create loaders
-    # loader_train=create_loader(train_params.dataset_name(), config_path)
-    # loader_train.start()
     #create phases
     phases= [
         Phase('train', loader_train, grad=True),
     ]
     #model 
-    model=NerfHash(3,  boundary_primitive=aabb, nr_samples_per_ray=nr_samples_per_ray, nr_iters_for_c2f=10000 ).to("cuda")
-    model_bg=NerfHash(3+int(do_reparametrization_to_4d), boundary_primitive=aabb, nr_samples_per_ray=nr_samples_bg, nr_iters_for_c2f=10000 ).to("cuda")
+    model=NerfHash(3,  boundary_primitive=aabb, nr_iters_for_c2f=hyperparams.foreground_nr_iters_for_c2f ).to("cuda")
+    model_bg=NerfHash(4, boundary_primitive=aabb, nr_iters_for_c2f=hyperparams.background_nr_iters_for_c2f ).to("cuda")
     # model_colorcal=Colorcal(loader_train.nr_samples(), 0)
     model_colorcal=None
 
     occupancy_grid=OccupancyGrid(64, 1.0, [0,0,0])
     use_occupancy_grid=True
 
-    # frame=loader_train.get_random_frame()
-    # frustum_mesh=frame.create_frustum_mesh(0.1)
-    # Scene.show(frustum_mesh,"frustum_mesh")
 
     first_time_getting_control=True
-    run_test=True
 
     while True:
 
@@ -162,7 +130,6 @@ def run():
             cb.phase_started(phase=phase)
 
             while ( True ): #we assume we have the data
-                # if ngp_gui.m_do_training: 
                 if True: 
                     is_training = phase.grad
                     model.train(phase.grad)
@@ -175,49 +142,14 @@ def run():
 
                         ####New stuff 
                         with torch.set_grad_enabled(False):
-                            #visualize the 3D occupancy grid
-                            # TIME_START("get_centers")
-                            # grid_centers=occupancy_grid.compute_grid_points(True)
-                            # TIME_END("get_centers")
-                            # show_points(grid_centers,"grid_centers")
 
                             #get random center
-                            # TIME_START("get_centers_rand")
                             if phase.iter_nr%8==0 and use_occupancy_grid:
                                 grid_centers_random, grid_center_indices=occupancy_grid.compute_random_sample_of_grid_points(256*256,True)
-                                # TIME_END("get_centers_rand")
-                                # show_points(grid_centers_random,"grid_centers_random")
-
-                                # print('grid_centers',grid_centers)
-
-
                                 # #get rgba field for all the centers
-                                # density_field=model.get_only_density( grid_centers, lattice, phase.iter_nr) 
                                 density_field=model.get_only_density( grid_centers_random, phase.iter_nr) 
-
-                                # # print("density_field",density_field)
-
-                                # #show grid centers
-                                # grid_centers_eig=tensor2eigen(grid_centers)
-                                # mesh_centers=Mesh()
-                                # mesh_centers.V=grid_centers_eig
-                                # # mesh_centers.C=tensor2eigen(color_by_idx(occupancy_grid.get_nr_voxels()))
-                                # mesh_centers.C=tensor2eigen(color_by_density_from_occupancy_grid(occupancy_grid))
-                                # # mesh_centers.C=tensor2eigen(color_by_density(density_field))
-                                # mesh_centers.m_vis.m_show_points=True
-                                # mesh_centers.m_vis.set_color_pervertcolor()
-                                # Scene.show(mesh_centers,"mesh_centers")
-
                                 #update the occupancy
-                                # occupancy_grid.update_with_density(density_field, 0.95, 1e-3)
                                 occupancy_grid.update_with_density_random_sample(grid_center_indices,density_field, 0.7, 1e-3)
-
-
-                                #debug with cubes
-                                # cubes_occupied=occupancy_grid.create_cubes_for_occupied_voxels()
-                                # Scene.show(cubes_occupied, "cubes_occupied")
-
-                        # exit(1)
 
                         ############finish new stuff
 
@@ -226,12 +158,12 @@ def run():
                         with torch.set_grad_enabled(False):
 
                            
-                            ray_origins, ray_dirs, gt_selected, gt_mask, img_indices=HashSDF.random_rays_from_reel(tensor_reel, nr_rays) 
+                            ray_origins, ray_dirs, gt_selected, gt_mask, img_indices=HashSDF.random_rays_from_reel(tensor_reel, hyperparams.nr_rays) 
                             ray_points_entry, ray_t_entry, ray_points_exit, ray_t_exit, does_ray_intersect_box=aabb.ray_intersection(ray_origins, ray_dirs)
 
 
                             if use_occupancy_grid:
-                                ray_samples_packed=occupancy_grid.compute_samples_in_occupied_regions(ray_origins, ray_dirs, ray_t_entry, ray_t_exit, min_dist_between_samples, max_nr_samples_per_ray, model.training)
+                                ray_samples_packed=occupancy_grid.compute_samples_in_occupied_regions(ray_origins, ray_dirs, ray_t_entry, ray_t_exit, hyperparams.min_dist_between_samples, hyperparams.max_nr_samples_per_ray, model.training)
                                 ray_samples_packed=ray_samples_packed.get_valid_samples()
                             #compute the nr of sampler per ray 
                             # nr_samples_per_ray=ray_samples_packed.ray_start_end_idx[:,1:2]-ray_samples_packed.ray_start_end_idx[:,0:1]
@@ -247,14 +179,12 @@ def run():
                             # print("z_vals",z_vals.min(), z_vals.max())
                             # TIME_END("get_z_vals")
 
-                            #repeat also the direction so that we have one direction for each sample
-                            sample_dirs=ray_dirs.view(-1,1,3).repeat(1,nr_samples_per_ray,1).contiguous().view(-1,3)
 
                             #create ray samples for bg
-                            if not with_mask:
+                            if not args.with_mask:
                                 # z_vals_bg, dummy, ray_samples_bg_4d, ray_samples_bg = model_bg.ray_sampler_bg.get_z_vals_bg(ray_origins, ray_dirs, model, lattice_bg, phase.iter_nr)
                                 # z_vals_bg, ray_samples_bg, ray_samples_bg_4d= RaySampler.compute_samples_bg(ray_origins, ray_dirs, ray_t_exit, nr_samples_bg, aabb.m_radius, aabb.m_center_tensor, model.training)
-                                ray_samples_packed_bg= RaySampler.compute_samples_bg(ray_origins, ray_dirs, ray_t_exit, nr_samples_bg, aabb.m_radius, aabb.m_center_tensor, model.training, False)
+                                ray_samples_packed_bg= RaySampler.compute_samples_bg(ray_origins, ray_dirs, ray_t_exit, hyperparams.nr_samples_bg, aabb.m_radius, aabb.m_center_tensor, model.training, False)
                                 # sample_dirs_bg=ray_dirs.view(-1,1,3).repeat(1,nr_samples_bg,1).contiguous().view(-1,3)
                                 # print("ray_samples_bg_4d",ray_samples_bg_4d.shape)
                                 # print("sample_dirs",sample_dirs.shape)
@@ -266,6 +196,8 @@ def run():
 
                         #get rgba for every point on the ray
                         if not use_occupancy_grid:
+                            #repeat also the direction so that we have one direction for each sample
+                            sample_dirs=ray_dirs.view(-1,1,3).repeat(1,nr_samples_per_ray,1).contiguous().view(-1,3)
                             rgb_field, density_field=model( ray_samples.view(-1,3), sample_dirs.view(-1,3), lattice, phase.iter_nr, model_colorcal, img_indices, None) 
                             rgb_samples=rgb_field.view(nr_rays,nr_samples_per_ray,-1)
                             radiance_samples=density_field.view(nr_rays,nr_samples_per_ray,)
@@ -293,11 +225,11 @@ def run():
                             pred_rgb=pred_rgb_fused
 
                         #run nerf bg
-                        if not with_mask:
+                        if not args.with_mask:
                             # rgb_samples_bg, density_samples_bg=model_bg( ray_samples_bg_4d.view(-1,4), sample_dirs_bg.view(-1,3), lattice_bg, phase.iter_nr, model_colorcal, img_indices, nr_rays=nr_rays) 
-                            rgb_samples_bg, density_samples_bg=model_bg( ray_samples_packed_bg.samples_pos_4d.view(-1,4), ray_samples_packed_bg.samples_dirs.view(-1,3), phase.iter_nr, model_colorcal, img_indices, nr_rays=nr_rays) 
-                            rgb_samples_bg=rgb_samples_bg.view(nr_rays, nr_samples_bg,3)
-                            density_samples_bg=density_samples_bg.view(nr_rays, nr_samples_bg)
+                            rgb_samples_bg, density_samples_bg=model_bg( ray_samples_packed_bg.samples_pos_4d.view(-1,4), ray_samples_packed_bg.samples_dirs.view(-1,3), phase.iter_nr, model_colorcal, img_indices, nr_rays=hyperparams.nr_rays) 
+                            rgb_samples_bg=rgb_samples_bg.view(hyperparams.nr_rays, hyperparams.nr_samples_bg, 3)
+                            density_samples_bg=density_samples_bg.view(hyperparams.nr_rays, hyperparams.nr_samples_bg)
                             # #get weights for the integration
                             # weights_bg, disp_map_bg, acc_map_bg, depth_map_bg, _=model_bg.volume_renderer(density_samples_bg, z_vals_bg, None)
                             pred_rgb_bg, pred_depth_bg, _, _ = model.volume_renderer_general.volume_render_nerf(ray_samples_packed_bg, rgb_samples_bg.view(-1,3), density_samples_bg.view(-1,1), ray_t_exit, False)
@@ -335,11 +267,11 @@ def run():
                         if first_time:
                             first_time=False
                             params=[]
-                            params.append( {'params': model.parameters(), 'weight_decay': 0.0, 'lr': lr} )
+                            params.append( {'params': model.parameters(), 'weight_decay': 0.0, 'lr': hyperparams.lr} )
                             if model_colorcal is not None:
-                                params.append( {'params': model_colorcal.parameters(), 'weight_decay': 0.0, 'lr': lr } )
-                            if not with_mask:
-                                params.append( {'params': model_bg.parameters(), 'weight_decay': 0.0, 'lr': lr} )
+                                params.append( {'params': model_colorcal.parameters(), 'weight_decay': 0.0, 'lr': hyperparams.lr } )
+                            if not args.with_mask:
+                                params.append( {'params': model_bg.parameters(), 'weight_decay': 0.0, 'lr': hyperparams.lr} )
                                 # if do_importance_sampling_bg:
                                     # params.append( {'params': model_bg_fine.parameters(), 'weight_decay': 0.0, 'lr': lr} )
 
@@ -420,11 +352,11 @@ def run():
                             if use_occupancy_grid:
                                 show_points(ray_samples_packed.samples_pos, "samples_pos")
                             # if ray_samples_bg is not None:
-                            if not with_mask:
+                            # if not args.with_mask:
                                 # print("ray_samples_bg",ray_samples_bg.shape)
                                 # show_points(ray_samples_bg.view(nr_rays*nr_samples_bg,-1)[:,0:3],"ray_samples_bg", color=[1.0, 0.3, 0.8])
-                                if do_importance_sampling_bg:
-                                    show_points(ray_samples_bg_fine.view(-1,3),"ray_samples_bg_fine", color=[0.5, 0.3, 0.2])
+                                # if do_importance_sampling_bg:
+                                    # show_points(ray_samples_bg_fine.view(-1,3),"ray_samples_bg_fine", color=[0.5, 0.3, 0.2])
                                 # show_points(ray_samples_bg_4d.view(nr_rays*nr_samples_bg,-1)[:,1:4],"ray_samples_bg_4d", color=[0.3, 0.7, 0.5])
                             # show_points(pts,"pts", color=[0.3, 0.7, 0.5])
 
@@ -450,7 +382,7 @@ def run():
 
                             if use_occupancy_grid:
                                 #get also the ray through occupancy
-                                ray_samples_packed=occupancy_grid.compute_samples_in_occupied_regions(ray_origins, ray_dirs, ray_t_entry, ray_t_exit, min_dist_between_samples, max_nr_samples_per_ray, model.training)
+                                ray_samples_packed=occupancy_grid.compute_samples_in_occupied_regions(ray_origins, ray_dirs, ray_t_entry, ray_t_exit, hyperparams.min_dist_between_samples, hyperparams.max_nr_samples_per_ray, model.training)
                                 # print("initial_ray_samples_packed, cur_nr_samples is ", ray_samples_packed.cur_nr_samples)
                                 # print("initial_ray_samples_packed, max_nr_samples is ", ray_samples_packed.max_nr_samples)
                                 # print("initial_ray_samples_packed, samples_pos is ", ray_samples_packed.samples_pos.shape)
@@ -470,10 +402,10 @@ def run():
                             # sample_dirs=ray_dirs.view(-1,1,3).repeat(1,nr_samples_per_ray,1).contiguous().view(-1,3)
 
                             #create ray samples for bg
-                            if not with_mask:
+                            if not args.with_mask:
                                 # z_vals_bg, dummy, ray_samples_bg_4d, ray_samples_bg = model_bg.ray_sampler_bg.get_z_vals_bg(ray_origins, ray_dirs, model, lattice, phase.iter_nr)
                                 # sample_dirs_bg=ray_dirs.view(-1,1,3).repeat(1,nr_samples_bg,1).contiguous().view(-1,3)
-                                ray_samples_packed_bg= RaySampler.compute_samples_bg(ray_origins, ray_dirs, ray_t_exit, nr_samples_bg, aabb.m_radius, aabb.m_center_tensor, model.training, False)
+                                ray_samples_packed_bg= RaySampler.compute_samples_bg(ray_origins, ray_dirs, ray_t_exit, hyperparams.nr_samples_bg, aabb.m_radius, aabb.m_center_tensor, model.training, False)
 
 
 
@@ -518,10 +450,10 @@ def run():
 
 
                             #run nerf bg
-                            if not with_mask:
-                                rgb_samples_bg, density_samples_bg=model_bg( ray_samples_packed_bg.samples_pos_4d.view(-1,4), ray_samples_packed_bg.samples_dirs.view(-1,3), phase.iter_nr, model_colorcal, img_indices, nr_rays=nr_rays) 
-                                rgb_samples_bg=rgb_samples_bg.view(vis_height*vis_width, nr_samples_bg,3)
-                                density_samples_bg=density_samples_bg.view(vis_height*vis_width, nr_samples_bg)
+                            if not args.with_mask:
+                                rgb_samples_bg, density_samples_bg=model_bg( ray_samples_packed_bg.samples_pos_4d.view(-1,4), ray_samples_packed_bg.samples_dirs.view(-1,3), phase.iter_nr, model_colorcal, img_indices, nr_rays=hyperparams.nr_rays) 
+                                rgb_samples_bg=rgb_samples_bg.view(vis_height*vis_width, hyperparams.nr_samples_bg, 3)
+                                density_samples_bg=density_samples_bg.view(vis_height*vis_width, hyperparams.nr_samples_bg)
                                 pred_rgb_bg, pred_depth_bg, _, _= model.volume_renderer_general.volume_render_nerf(ray_samples_packed_bg, rgb_samples_bg.view(-1,3), density_samples_bg.view(-1,1), ray_t_exit, False)
                                 #combine attempt 3 like in https://github.com/lioryariv/volsdf/blob/a974c883eb70af666d8b4374e771d76930c806f3/code/model/network_bg.py#L96
                                 pred_rgb_bg = bg_transmittance.view(-1,1) * pred_rgb_bg
@@ -552,7 +484,7 @@ def run():
                             Gui.show(tensor2mat(bg_transmittance_img), "bg_transmittance_img")
 
                             #vis_rgb_bg
-                            if not with_mask:
+                            if not args.with_mask:
                                 pred_rgb_bg_img=lin2nchw(pred_rgb_bg, frame_controlable.width, frame_controlable.height)
                                 Gui.show(tensor2mat(pred_rgb_bg_img).rgb2bgr(), "pred_rgb_bg_img_control")
                             # #vis weights 
