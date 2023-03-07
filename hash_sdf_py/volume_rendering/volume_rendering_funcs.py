@@ -186,10 +186,6 @@ class IntegrateColorAndWeightsFunc(Function):
 
 
 
-        
-
-      
-
         ctx.ray_samples_packed=None #Release memory in case it's not automatically released
 
         return None, grad_rgb_samples, grad_weights_samples

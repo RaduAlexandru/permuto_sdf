@@ -13,7 +13,7 @@ from hash_sdf_py.volume_rendering.volume_rendering_funcs import *
 
 
 
-
+#cannot be used with the mask loss because it does not propagate the gradients
 class VolumeRenderingGeneralModule(torch.nn.Module):
     def __init__(self):
         super(VolumeRenderingGeneralModule, self).__init__()
@@ -56,5 +56,40 @@ class SumOverRayModule(torch.nn.Module):
         values_sum_per_ray, values_sum_per_sample=SumOverRayFunc.apply(ray_samples_packed, sample_values)
 
         return values_sum_per_ray, values_sum_per_sample
+
+
+#volumes renders nerf and can propagate gradients also from the bg_transmittance so it can be used with the mask loss
+class VolumeRenderingNerf(torch.nn.Module):
+    def __init__(self, ):
+        super().__init__()
+
+        self.softplus=torch.nn.Softplus()
+
+        self.cumprod_alpha2transmittance_module=CumprodAlpha2TransmittanceModule()
+        self.integrator_module=IntegrateColorAndWeightsModule()
+        self.sum_ray_module=SumOverRayModule()
+
+    #The fully fusedvolume rendering in VolumeRenderingGeneralModule.volume_render_nerf doesnt propagate gradients from the sampel weight so we cannot use mask supervision,  we do this now with a more pytorch thing so we can propagate gradient also from the mask loss
+    def compute_weights(self, ray_samples_packed, density_samples ):
+        dt=ray_samples_packed.samples_dt
+        alpha = 1.0 - torch.exp(-density_samples * dt)
+
+        transmittance, bg_transmittance= self.cumprod_alpha2transmittance_module(ray_samples_packed, 1-alpha + 1e-7)
+
+        weights = alpha * transmittance
+        weights=weights.view(-1,1)
+       
+
+        weights_sum, weight_sum_per_sample=self.sum_ray_module(ray_samples_packed, weights)
+
+        return weights, weights_sum, bg_transmittance
+    
+    def integrate(self, ray_samples_packed, samples_vals, weights):
+        integrated=self.integrator_module(ray_samples_packed, samples_vals, weights)
+
+        return integrated
+
+
+
 
 

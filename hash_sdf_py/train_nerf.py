@@ -23,6 +23,7 @@ from hash_sdf_py.utils.common_utils import create_bb_for_dataset
 from hash_sdf_py.utils.common_utils import create_bb_mesh
 from hash_sdf_py.utils.common_utils import show_points
 from hash_sdf_py.utils.common_utils import lin2nchw
+from hash_sdf_py.utils.common_utils import summary
 from hash_sdf_py.utils.nerf_utils import create_samples
 
 from hash_sdf_py.callbacks.callback_utils import *
@@ -142,67 +143,30 @@ def run():
         with torch.set_grad_enabled(False):
             ray_origins, ray_dirs, gt_selected, gt_mask, img_indices=HashSDF.random_rays_from_reel(tensor_reel, hyperparams.nr_rays) 
             ray_points_entry, ray_t_entry, ray_points_exit, ray_t_exit, does_ray_intersect_box=aabb.ray_intersection(ray_origins, ray_dirs)
-            # fg_samples_pos, fg_samples_dirs, fg_ray_start_end_idx, bg_samples_pos, bg_samples_dirs, bg_ray_start_end_idx = create_samples(args, hyperparams, ray_origins, ray_dirs, model.training, occupancy_grid, aabb)
             fg_ray_samples_packed, bg_ray_samples_packed = create_samples(args, hyperparams, ray_origins, ray_dirs, model.training, occupancy_grid, aabb)
-            # #foreground samples
-            # if hyperparams.use_occupancy_grid:
-            #     ray_samples_packed=occupancy_grid.compute_samples_in_occupied_regions(ray_origins, ray_dirs, ray_t_entry, ray_t_exit, hyperparams.min_dist_between_samples, hyperparams.max_nr_samples_per_ray, model.training)
-            #     ray_samples_packed=ray_samples_packed.get_valid_samples()
-            # else:
-            #     z_vals = model.ray_sampler.get_z_vals(ray_origins, ray_dirs, hyperparams.max_nr_samples_per_ray, model.training)
-            #     ray_samples = ray_origins.unsqueeze(1) + z_vals.unsqueeze(2) * ray_dirs.unsqueeze(1)
-            #     sample_dirs=ray_dirs.view(-1,1,3).repeat(1,  hyperparams.max_nr_samples_per_ray ,1).contiguous().view(-1,3)
-            # #create ray samples for bg
-            # if not args.with_mask:
-            #     ray_samples_packed_bg= RaySampler.compute_samples_bg(ray_origins, ray_dirs, ray_t_exit, hyperparams.nr_samples_bg, aabb.m_radius, aabb.m_center_tensor, model.training, False)
+
+
+        #foreground
+        #compute rgb and density
+        rgb_samples, density_samples=model( fg_ray_samples_packed.samples_pos, fg_ray_samples_packed.samples_dirs, phase.iter_nr, model_colorcal, img_indices, ray_start_end_idx=fg_ray_samples_packed.ray_start_end_idx) 
+        #volumetric integration
+        weights, weight_sum, bg_transmittance= model.volume_renderer_nerf.compute_weights(fg_ray_samples_packed, density_samples.view(-1,1))
+        pred_rgb=model.volume_renderer_nerf.integrate(fg_ray_samples_packed, rgb_samples, weights)
+           
                 
-
-
-
-        #get rgba for every point on the ray
-        if not hyperparams.use_occupancy_grid:
-            #repeat also the direction so that we have one direction for each sample
-            rgb_field, density_field=model( ray_samples.view(-1,3), sample_dirs.view(-1,3), lattice, phase.iter_nr, model_colorcal, img_indices, None) 
-            rgb_samples=rgb_field.view(nr_rays,nr_samples_per_ray,-1)
-            radiance_samples=density_field.view(nr_rays,nr_samples_per_ray,)
-            #get weights for the integration
-            # print("radiance_samples",radiance_samples.shape)
-            # print("z_vals",z_vals.shape)
-            weights, disp_map, acc_map, depth_map, bg_transmittance=model.volume_renderer(radiance_samples, z_vals, ray_t_exit)
-            pred_rgb = torch.sum(weights.unsqueeze(-1) * rgb_samples, 1)
-
-        else:
-            ####again but with fused stuff
-            rgb_samples, density_samples=model( fg_ray_samples_packed.samples_pos, fg_ray_samples_packed.samples_dirs, phase.iter_nr, model_colorcal, img_indices, ray_start_end_idx=fg_ray_samples_packed.ray_start_end_idx) 
-            # rgb_samples_fused=rgba_field_fused[:,0:3]
-            # radiance_samples_fused=rgba_field_fused[:,3]
-            # TIME_START("vol_render_fused") #0.04ms
-            # pred_rgb_fused= VolumeRendering.volume_render_nerf(ray_samples_packed, rgb_samples_fused.view(-1,3), radiance_samples_fused.view(-1,1), ray_t_exit)
-            pred_rgb_fused, pred_depth_fused, bg_transmittance, weight_per_sample= model.volume_renderer_general.volume_render_nerf(fg_ray_samples_packed, rgb_samples.view(-1,3), density_samples.view(-1,1), ray_t_exit, True)
-            # TIME_END("vol_render_fused")
-            # diff=((pred_rgb-pred_rgb_fused)**2).mean()
-            # print("diff is ",diff)
-            # saving=ray_samples_packed.samples_pos.shape[0]/ray_samples.view(-1,3).shape[0]
-            # print("computation saving ", saving)
-
-            # pred_rgb_fused=pred_rgb #using the color from the original rendering
-            pred_rgb=pred_rgb_fused
 
         #run nerf bg
         if not args.with_mask:
-            # rgb_samples_bg, density_samples_bg=model_bg( ray_samples_bg_4d.view(-1,4), sample_dirs_bg.view(-1,3), lattice_bg, phase.iter_nr, model_colorcal, img_indices, nr_rays=nr_rays) 
-            # rgb_samples_bg, density_samples_bg=model_bg( bg_samples_pos, bg_samples_dirs, phase.iter_nr, model_colorcal, img_indices, nr_rays=hyperparams.nr_rays) 
+            #compute rgb and density
             rgb_samples_bg, density_samples_bg=model_bg( bg_ray_samples_packed.samples_pos_4d, bg_ray_samples_packed.samples_dirs, phase.iter_nr, model_colorcal, img_indices, ray_start_end_idx=bg_ray_samples_packed.ray_start_end_idx) 
-            rgb_samples_bg=rgb_samples_bg.view(hyperparams.nr_rays, hyperparams.nr_samples_bg, 3)
-            density_samples_bg=density_samples_bg.view(hyperparams.nr_rays, hyperparams.nr_samples_bg)
-            # #get weights for the integration
-            # weights_bg, disp_map_bg, acc_map_bg, depth_map_bg, _=model_bg.volume_renderer(density_samples_bg, z_vals_bg, None)
-            pred_rgb_bg, pred_depth_bg, _, _ = model.volume_renderer_general.volume_render_nerf(bg_ray_samples_packed, rgb_samples_bg.view(-1,3), density_samples_bg.view(-1,1), ray_t_exit, False)
-            # pred_rgb_bg = torch.sum(weights_bg.unsqueeze(-1) * rgb_samples_bg, 1)
-            #combine attempt 3 like in https://github.com/lioryariv/volsdf/blob/a974c883eb70af666d8b4374e771d76930c806f3/code/model/network_bg.py#L96
+            #volumetric integration
+            weights_bg, weight_sum_bg, _= model_bg.volume_renderer_nerf.compute_weights(bg_ray_samples_packed, density_samples_bg.view(-1,1))
+            pred_rgb_bg=model_bg.volume_renderer_nerf.integrate(bg_ray_samples_packed, rgb_samples_bg, weights_bg)
+            #combine
             pred_rgb_bg = bg_transmittance.view(-1,1) * pred_rgb_bg
             pred_rgb = pred_rgb + pred_rgb_bg
 
+   
             
 
 
@@ -219,6 +183,7 @@ def run():
         optimizer.zero_grad()
         cb.before_backward_pass()
         loss.backward()
+        # summary(model_bg)
         cb.after_backward_pass()
         optimizer.step()
 
