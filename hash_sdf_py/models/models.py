@@ -3099,7 +3099,7 @@ class NerfHash(torch.nn.Module):
         # self.pick_patch_and_rand_pixels= PatchAndRandPixelPicker(low_discrepancy=False)
         # self.pixel_sampler=PixelSampler()
         self.create_rays=CreateRaysModule()
-        # self.ray_sampler=NerfUniformSampler(boundary_primitive, nr_samples_per_ray)
+        # self.ray_sampler=NerfUniformSampler(boundary_primitive)
         # self.ray_sampler_bg=NerfBGSampler(boundary_primitive, nr_samples_per_ray)
         # self.volume_renderer=VolumeRenderingNerf()
         self.volume_renderer_general=VolumeRenderingGeneralModule()

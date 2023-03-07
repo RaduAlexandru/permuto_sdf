@@ -144,7 +144,7 @@ def run():
     if with_viewer:
         view=Viewer.create(config_path)
         ngp_gui=NGPGui.create(view)
-        view.m_camera.from_string("-0.837286  0.360068  0.310824 -0.0496414    -0.5285  -0.030986 0.846901   0.11083  0.235897 -0.152857 60 0.0502494 5024.94")
+        view.m_camera.from_string(" 1.16039 0.262138 0.893686  -0.06185  0.470286 0.0330563 0.879719 -0.0700771  0.0530106  0.0714673 60 0.0502494 5024.94")
 
     experiment_name="sdf_def"
 

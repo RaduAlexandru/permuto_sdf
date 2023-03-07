@@ -54,11 +54,13 @@ compute_samples_bg_gpu(
     const bool randomize_position,
     const bool contract_3d_samples,
     //output
-    torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> z_vals,
-    torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> dt_vals,
     torch::PackedTensorAccessor32<float,3,torch::RestrictPtrTraits> samples_3d,
     torch::PackedTensorAccessor32<float,3,torch::RestrictPtrTraits> samples_4d,
-    torch::PackedTensorAccessor32<float,3,torch::RestrictPtrTraits> samples_dirs
+    torch::PackedTensorAccessor32<float,3,torch::RestrictPtrTraits> samples_dirs,
+    torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> samples_z,
+    torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> samples_dt,
+    torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> ray_fixed_dt,
+    torch::PackedTensorAccessor32<int,2,torch::RestrictPtrTraits> ray_start_end_idx
     ) {
 
     int idx = blockIdx.x * blockDim.x + threadIdx.x; //each thread will deal with a new value
@@ -101,7 +103,7 @@ compute_samples_bg_gpu(
 
         //map 1 towards the exit of the bounding primitive and 0 to infinity
         float z_sample=t_exit/t_sample;
-        z_vals[idx][i]=z_sample;
+        samples_z[idx][i]=z_sample;
 
         //store the 3d point
         float3 sample_3d = ray_origin + z_sample * ray_dir;
@@ -144,13 +146,20 @@ compute_samples_bg_gpu(
 
     //dt
     for (int i=0; i<nr_samples_per_ray-1; i++){
-        float cur_z=z_vals[idx][i];
-        float next_z=z_vals[idx][i+1];
+        float cur_z=samples_z[idx][i];
+        float next_z=samples_z[idx][i+1];
         float dt=next_z-cur_z;
-        dt_vals[idx][i]=dt;
+        samples_dt[idx][i]=dt;
     }
     //last dt
-    dt_vals[idx][nr_samples_per_ray-1]=1e10;
+    samples_dt[idx][nr_samples_per_ray-1]=1e10;
+
+
+    //per ray quantities
+    ray_fixed_dt[idx][0]=0; //the samples have different dt for each sample so we set this to 0
+    //ray_start_end_idx
+    ray_start_end_idx[idx][0]=idx*nr_samples_per_ray;
+    ray_start_end_idx[idx][1]=idx*nr_samples_per_ray+nr_samples_per_ray;
 
 
 }

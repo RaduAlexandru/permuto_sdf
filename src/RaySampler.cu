@@ -72,16 +72,21 @@ RaySamplesPacked RaySampler::compute_samples_bg(const torch::Tensor& ray_origins
                 randomize_position,
                 contract_3d_samples,
                 //output
-                ray_samples_packed.samples_z.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
-                ray_samples_packed.samples_dt.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
                 ray_samples_packed.samples_pos.packed_accessor32<float,3,torch::RestrictPtrTraits>(),
                 ray_samples_packed.samples_pos_4d.packed_accessor32<float,3,torch::RestrictPtrTraits>(),
-                ray_samples_packed.samples_dirs.packed_accessor32<float,3,torch::RestrictPtrTraits>()
+                ray_samples_packed.samples_dirs.packed_accessor32<float,3,torch::RestrictPtrTraits>(),
+                ray_samples_packed.samples_z.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
+                ray_samples_packed.samples_dt.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
+                ray_samples_packed.ray_fixed_dt.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
+                ray_samples_packed.ray_start_end_idx.packed_accessor32<int,2,torch::RestrictPtrTraits>()
             );
 
     if(randomize_position){
         m_rng.advance();
     }
+
+
+    ray_samples_packed.cur_nr_samples.fill_(nr_rays*nr_samples_per_ray);
 
 
     ray_samples_packed.samples_z = ray_samples_packed.samples_z.view({ nr_samples_maximum,1 });
