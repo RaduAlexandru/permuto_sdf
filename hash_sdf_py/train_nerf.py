@@ -41,6 +41,10 @@ parser.add_argument('--no_viewer', action='store_true', help="Set this to true i
 args = parser.parse_args()
 with_viewer=not args.no_viewer
 
+print("args.with_mask", args.with_mask)
+print("args.low_res", args.low_res)
+print("with_viewer", with_viewer)
+
 
 
 config_file="train_nerf.cfg"
@@ -54,9 +58,6 @@ config_path=os.path.join( os.path.dirname( os.path.realpath(__file__) ) , '../co
 train_params=TrainParams.create(config_path)    
 class HyperParams:
     lr= 1e-3
-    eikonal_weight=0.04
-    lr_milestones=[100000,150000,180000,190000]
-    iter_finish_training=200000
     use_occupancy_grid=True
     nr_samples_bg=32
     min_dist_between_samples=0.0001
@@ -67,6 +68,11 @@ class HyperParams:
     background_nr_iters_for_c2f=10000
 hyperparams=HyperParams()
 
+# def run_net():
+
+# def run_net_in_chunks():
+
+# def train():
 
 
 
@@ -131,17 +137,14 @@ def run():
         # #forward
         cb.before_forward_pass() 
 
-        #occupancy
         with torch.set_grad_enabled(False):
-            #get random center
+            #update occupancy
             if phase.iter_nr%8==0:
                 grid_centers_random, grid_center_indices=occupancy_grid.compute_random_sample_of_grid_points(256*256,True)
                 density_field=model.get_only_density( grid_centers_random, phase.iter_nr)  #get rgba field for all the centers
                 occupancy_grid.update_with_density_random_sample(grid_center_indices,density_field, 0.7, 1e-3)  #update the occupancy
-        #finish ocuppancy
 
-        
-        with torch.set_grad_enabled(False):
+            #get rays and samples 
             ray_origins, ray_dirs, gt_selected, gt_mask, img_indices=HashSDF.random_rays_from_reel(tensor_reel, hyperparams.nr_rays) 
             ray_points_entry, ray_t_entry, ray_points_exit, ray_t_exit, does_ray_intersect_box=aabb.ray_intersection(ray_origins, ray_dirs)
             fg_ray_samples_packed, bg_ray_samples_packed = create_samples(args, hyperparams, ray_origins, ray_dirs, model.training, occupancy_grid, aabb)
@@ -219,8 +222,8 @@ def run():
 
                     # if iter_nr%100==0:
                     # show_points(ray_samples,"ray_samples")
-                    if hyperparams.use_occupancy_grid:
-                        show_points(fg_ray_samples_packed.samples_pos, "samples_pos")
+                    # if hyperparams.use_occupancy_grid:
+                    show_points(fg_ray_samples_packed.samples_pos, "samples_pos")
                     # if ray_samples_bg is not None:
                     # if not args.with_mask:
                         # print("ray_samples_bg",ray_samples_bg.shape)

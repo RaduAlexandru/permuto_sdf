@@ -717,11 +717,8 @@ def create_samples(args, hyperparams, ray_origins, ray_dirs, jitter_samples, occ
 	if hyperparams.use_occupancy_grid and occupancy_grid is not None:
 		fg_ray_samples_packed=occupancy_grid.compute_samples_in_occupied_regions(ray_origins, ray_dirs, ray_t_entry, ray_t_exit, hyperparams.min_dist_between_samples, hyperparams.max_nr_samples_per_ray, jitter_samples)
 		fg_ray_samples_packed=fg_ray_samples_packed.get_valid_samples()
-		# fg_samples_pos=ray_samples_packed.samples_pos
-		# fg_samples_dirs=ray_samples_packed.samples_dirs
-		# fg_ray_start_end_idx=ray_samples_packed.ray_start_end_idx
 	else:
-		print("todo")
+		# print("todo")
 		# z_vals = model.ray_sampler.get_z_vals(ray_origins, ray_dirs, hyperparams.max_nr_samples_per_ray, jitter_samples)
 		# ray_samples = ray_origins.unsqueeze(1) + z_vals.unsqueeze(2) * ray_dirs.unsqueeze(1)
 		# fg_samples_pos=ray_samples.view(-1,3)
@@ -732,6 +729,11 @@ def create_samples(args, hyperparams, ray_origins, ray_dirs, jitter_samples, occ
 		# idx_start=idx_start*hyperparams.max_nr_samples_per_ray
 		# idx_end=idx_start+hyperparams.max_nr_samples_per_ray
 		# fg_ray_start_end_idx=torch.cat(idx_start.view(-1,1), idx_end.view(-1,1))
+
+
+		fg_ray_samples_packed= RaySampler.compute_samples_fg(ray_origins, ray_dirs, ray_t_entry, ray_t_exit, hyperparams.min_dist_between_samples, hyperparams.max_nr_samples_per_ray, bounding_primitive.m_radius, bounding_primitive.m_center_tensor, jitter_samples)
+		fg_ray_samples_packed=fg_ray_samples_packed.get_valid_samples()
+
 
 	#create ray samples for bg
 	if not args.with_mask:

@@ -133,6 +133,7 @@ PYBIND11_MODULE(hash_sdf, m) {
 
     py::class_<RaySampler> (m, "RaySampler")
     .def(py::init<>())
+    .def_static("compute_samples_fg", &RaySampler::compute_samples_fg ) 
     .def_static("compute_samples_bg", &RaySampler::compute_samples_bg ) 
     ;
 

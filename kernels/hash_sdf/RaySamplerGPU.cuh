@@ -26,6 +26,8 @@
 
 namespace RaySamplerGPU{
 
+inline constexpr __device__ uint32_t MAX_STEPS() { return 2048*2; } // finest number of steps per unit length
+
 __device__ float clamp_min(float x, float a ){
   return max(a, x);
 }
@@ -160,6 +162,183 @@ compute_samples_bg_gpu(
     //ray_start_end_idx
     ray_start_end_idx[idx][0]=idx*nr_samples_per_ray;
     ray_start_end_idx[idx][1]=idx*nr_samples_per_ray+nr_samples_per_ray;
+
+
+}
+
+
+
+__global__ void 
+compute_samples_fg_gpu(
+    const int nr_rays,
+    const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> ray_origins,
+    const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> ray_dirs,
+    const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> ray_t_entry,
+    const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> ray_t_exit,
+    const float sphere_radius,
+    const torch::PackedTensorAccessor32<float,1,torch::RestrictPtrTraits> sphere_center_tensor,
+    const float min_dist_between_samples,
+    const int max_nr_samples_per_ray,
+    const int max_nr_samples,
+    pcg32 rng,
+    const bool jitter_samples,
+    //output
+    torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> samples_pos,
+    torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> samples_dirs,
+    torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> samples_z,
+    torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> samples_dt,
+    torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> ray_fixed_dt,
+    torch::PackedTensorAccessor32<int,2,torch::RestrictPtrTraits> ray_start_end_idx,
+    torch::PackedTensorAccessor32<int,1,torch::RestrictPtrTraits> cur_nr_samples
+    ) {
+
+    int idx = blockIdx.x * blockDim.x + threadIdx.x; //each thread will deal with a new value
+
+    if(idx>=nr_rays){ //don't go out of bounds
+        return;
+    }
+
+    // float t_exit=ray_t_exit[idx][0];
+    float t_start=ray_t_entry[idx][0];
+    float t_exit=ray_t_exit[idx][0];
+    float3 ray_dir;
+    ray_dir.x=ray_dirs[idx][0];
+    ray_dir.y=ray_dirs[idx][1];
+    ray_dir.z=ray_dirs[idx][2];
+    float3 ray_origin;
+    ray_origin.x=ray_origins[idx][0];
+    ray_origin.y=ray_origins[idx][1];
+    ray_origin.z=ray_origins[idx][2];
+    float3 sphere_center;
+    sphere_center.x=sphere_center_tensor[0];
+    sphere_center.y=sphere_center_tensor[1];
+    sphere_center.z=sphere_center_tensor[2];
+
+    float eps=1e-6; // float32 only has 7 decimal digits precision
+
+    float distance_through_occupied_space=t_exit-t_start; //this can be 0 in the case tha the ray doesn't intersect with the bounding primitive
+
+    //now we have a maximum distance that we traverse through occupied space. 
+    //we also have a min distance between samples, so we can calculate how many samples we need
+    int nr_samples_to_create=distance_through_occupied_space/min_dist_between_samples;
+
+    //this nr of samples can be quite large if the occupied distance is big, so we clamp the nr of samples
+    nr_samples_to_create=clamp(nr_samples_to_create, 0, max_nr_samples_per_ray);
+
+    //recalculate the dist between samples given the new nr of samples
+    float dist_between_samples=distance_through_occupied_space/nr_samples_to_create;
+
+
+    //if we have samples to create we create them
+    //we also don't create anything if we have only 1 sample. Only 1 sample creates lots of probles with the cdf which has only one value of 0 and therefore binary search runs forever
+    if (nr_samples_to_create>1 && distance_through_occupied_space>eps){
+        //go again through the occupancy grid and create the samples, we assume we have enough space for them
+        //first do some bookeeping for this ray, like the nr of samples, so we know where to write in the packed tensor
+        int indx_start_sample=atomicAdd(&cur_nr_samples[0],nr_samples_to_create);
+        ray_start_end_idx[idx][0]=indx_start_sample;
+        // ray_start_end_idx[idx][1]=indx_start_sample+nr_samples_to_create-1; //we substract 1 because if we create for example 2 samples we want the indices to be the start idx to be 0 and the end idx to be 1. So the start and end idx point directly at the first and last sampler
+        ray_start_end_idx[idx][1]=indx_start_sample+nr_samples_to_create; 
+        ray_fixed_dt[idx][0]=dist_between_samples;
+        //if we are about to create more samples that we can actually store, just exit this thread
+        //however we still keep writing into ray_start_end_idx because we want to be able later to filter those rays out that actually have no samples and not process them or not volumetrically integrate them
+        if( (indx_start_sample+nr_samples_to_create)>max_nr_samples){
+            return;
+        }
+
+
+        float t=t_start; //cur_t
+        int nr_steps=0;
+
+        //jutter just the begginign so the samples are all at the same distance from each other and therefore the dt is all the same
+        float rand_mov=0;
+        if(jitter_samples){
+            rng.advance(idx); //since all the threads start with the same seed, we need to advance this thread so it gets other numbers different than the otehrs
+            t=t+dist_between_samples*rng.next_float();;
+        }
+
+
+        int nr_samples_created=0;
+        while (t<t_exit &&nr_steps<MAX_STEPS()) {
+            t=clamp(t, t_start, t_exit);
+            float3 pos = ray_origin+t*ray_dir;
+            
+            //we also check that we don't create more samples because sometimes it can happen to create one or more less depending on floating point errors
+            if (nr_samples_created<nr_samples_to_create){ //we advance the t just a bit and create samples
+                //store positions
+                samples_pos[indx_start_sample+nr_samples_created][0]=pos.x;
+                samples_pos[indx_start_sample+nr_samples_created][1]=pos.y;
+                samples_pos[indx_start_sample+nr_samples_created][2]=pos.z;
+                //store dirs
+                samples_dirs[indx_start_sample+nr_samples_created][0]=ray_dir.x;
+                samples_dirs[indx_start_sample+nr_samples_created][1]=ray_dir.y;
+                samples_dirs[indx_start_sample+nr_samples_created][2]=ray_dir.z;
+                //store z
+                samples_z[indx_start_sample+nr_samples_created][0]=t;
+                samples_dt[indx_start_sample+nr_samples_created][0]=dist_between_samples;
+                //go to next sample
+                // float rand_mov=0;
+                // if(jitter_samples){
+                //     rng.advance(idx); //since all the threads start with the same seed, we need to advance this thread so it gets other numbers different than the otehrs
+                //     float rand=rng.next_float();
+                //     rand_mov=dist_between_samples*rand-dist_between_samples/2.0; //moves between [-half_dist, half_dist]
+                // }
+                // t+=dist_between_samples+rand_mov;
+                t+=dist_between_samples;
+                // t=clamp(t, t_start, t_exit);
+                nr_samples_created+=1;
+            }
+            nr_steps+=1;
+        }
+        //better to store exactly the nr of samples we created
+        // ray_start_end_idx[idx][0]=indx_start_sample;
+        // ray_start_end_idx[idx][1]=indx_start_sample+nr_samples_created;
+
+        //the last sample on the ray doesn't necesserally need to have a dt= dist_between_samples. It can have a lower dt if it's very close to the border
+        float remaining_dist_until_border=t_exit-samples_z[indx_start_sample+nr_samples_created-1][0];
+        samples_dt[indx_start_sample+nr_samples_created-1][0]=clamp(remaining_dist_until_border, 0.0, dist_between_samples);
+        // samples_dt[indx_start_sample+nr_samples_created-1][0]=remaining_dist_until_border;
+
+
+        //if we still have some more samples to create, we just set them to zero
+        for (int i=nr_samples_created; i<nr_samples_to_create; i++){
+            //store positions
+            samples_pos[indx_start_sample+i][0]=0;
+            samples_pos[indx_start_sample+i][1]=0;
+            samples_pos[indx_start_sample+i][2]=0;
+            //store dirs
+            samples_dirs[indx_start_sample+i][0]=0;
+            samples_dirs[indx_start_sample+i][1]=0;
+            samples_dirs[indx_start_sample+i][2]=0;
+            //store z
+            samples_z[indx_start_sample+i][0]=-1; //just a sentinel value that we can easily detect in the volumetric rendering and discard these samples
+            samples_dt[indx_start_sample+i][0]=0;
+        }
+
+        //if we create less samples than what we commited to create we just update to the new quantity so we know that end_idx points at the last sample of the ray
+        // ray_start_end_idx[idx][1]=indx_start_sample+nr_samples_created-1;
+        ray_start_end_idx[idx][1]=indx_start_sample+nr_samples_created;
+
+        //if we create only 1 sample, then we discard this ray since the cdf will just have a value of 0 and therfore binary search will run forever
+        //we also discard rays with 2 or less because it really doesnt make sense to integrate just 2 samples
+        if(nr_samples_created<=2){
+            ray_fixed_dt[idx][0]=0;
+            ray_start_end_idx[idx][0]=0;
+            ray_start_end_idx[idx][1]=0;
+        }
+
+
+    }else{
+        //this ray passes onyl though unocupied space
+        //we set the ray quantities to 0 and there is nothing to set in the per_sample quantities because we have no samples
+        ray_fixed_dt[idx][0]=0;
+        ray_start_end_idx[idx][0]=0;
+        ray_start_end_idx[idx][1]=0;
+
+        
+    }
+
+
+
 
 
 }
