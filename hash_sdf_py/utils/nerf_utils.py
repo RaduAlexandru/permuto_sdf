@@ -717,6 +717,10 @@ def create_samples(args, hyperparams, ray_origins, ray_dirs, jitter_samples, occ
 	if hyperparams.use_occupancy_grid and occupancy_grid is not None:
 		fg_ray_samples_packed=occupancy_grid.compute_samples_in_occupied_regions(ray_origins, ray_dirs, ray_t_entry, ray_t_exit, hyperparams.min_dist_between_samples, hyperparams.max_nr_samples_per_ray, jitter_samples)
 		fg_ray_samples_packed=fg_ray_samples_packed.compact_to_valid_samples()
+
+		
+
+
 	else:
 		# print("todo")
 		# z_vals = model.ray_sampler.get_z_vals(ray_origins, ray_dirs, hyperparams.max_nr_samples_per_ray, jitter_samples)
@@ -747,5 +751,4 @@ def create_samples(args, hyperparams, ray_origins, ray_dirs, jitter_samples, occ
 
 	# return fg_samples_pos, fg_samples_dirs, fg_ray_start_end_idx, bg_samples_pos, bg_samples_dirs, bg_ray_start_end_idx
 	return fg_ray_samples_packed, bg_ray_samples_packed
-
 

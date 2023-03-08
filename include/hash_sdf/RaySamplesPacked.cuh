@@ -12,6 +12,7 @@ public:
     //since we preallocate more samples than necessary, some of them might be empty. so we just get the valid ones here
     RaySamplesPacked compact_to_valid_samples();
     void set_sdf(const torch::Tensor& sdf);
+    void remove_sdf();
     int compute_exact_nr_samples();
     void initialize_with_one_sample_per_ray(const torch::Tensor one_sample_per_ray, const torch::Tensor dirs); //usefult for creating samples when doing sphere tracing in which we have only one sample per ray. And then we can pass around this raysamples packed even if its compacted or not
         

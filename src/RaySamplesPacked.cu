@@ -150,6 +150,9 @@ void RaySamplesPacked::set_sdf(const torch::Tensor& sdf){
     samples_sdf=sdf.view({-1,1});
     has_sdf=true;
 }
+void RaySamplesPacked::remove_sdf(){
+    has_sdf=false;
+}
 
     
 

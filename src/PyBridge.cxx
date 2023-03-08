@@ -100,6 +100,7 @@ PYBIND11_MODULE(hash_sdf, m) {
     .def("compute_exact_nr_samples", &RaySamplesPacked::compute_exact_nr_samples ) 
     .def("initialize_with_one_sample_per_ray", &RaySamplesPacked::initialize_with_one_sample_per_ray ) 
     .def("set_sdf", &RaySamplesPacked::set_sdf ) 
+    .def("remove_sdf", &RaySamplesPacked::remove_sdf ) 
     .def_readwrite("samples_pos",  &RaySamplesPacked::samples_pos )
     .def_readwrite("samples_pos_4d",  &RaySamplesPacked::samples_pos_4d )
     .def_readwrite("samples_dirs",  &RaySamplesPacked::samples_dirs )

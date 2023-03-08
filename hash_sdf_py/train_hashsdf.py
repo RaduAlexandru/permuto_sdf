@@ -27,8 +27,10 @@ from hash_sdf_py.models.models import Colorcal
 from hash_sdf_py.utils.sdf_utils import sdf_loss
 from hash_sdf_py.utils.sdf_utils import sphere_trace
 from hash_sdf_py.utils.sdf_utils import filter_unconverged_points
+from hash_sdf_py.utils.sdf_utils import importance_sampling_sdf_model
 from hash_sdf_py.utils.nerf_utils import create_rays_from_frame
 from hash_sdf_py.utils.nerf_utils import create_samples
+from hash_sdf_py.utils.common_utils import lin2nchw
 from hash_sdf_py.utils.common_utils import map_range_val
 from hash_sdf_py.utils.common_utils import show_points
 from hash_sdf_py.utils.common_utils import tex2img
@@ -58,8 +60,8 @@ config_path=os.path.join( os.path.dirname( os.path.realpath(__file__) ) , '../co
 train_params=TrainParams.create(config_path)    
 class HyperParams:
     lr= 1e-3
-    nr_iter_sphere_fit=4000
-    # nr_iter_sphere_fit=1
+    # nr_iter_sphere_fit=4000
+    nr_iter_sphere_fit=1
     forced_variance_finish_iter=35000
     eikonal_weight=0.04
     curvature_weight=1300.0
@@ -73,7 +75,7 @@ class HyperParams:
     min_dist_between_samples=0.0001
     max_nr_samples_per_ray=64 #for the foreground
     nr_samples_imp_sampling=16
-    do_imp_sampling=True #adds nr_samples_imp_samplingx2 more samples pery ray
+    do_importance_sampling=True #adds nr_samples_imp_samplingx2 more samples pery ray
     use_color_calibration=True
     nr_rays=512
     sdf_geom_feat_size=32
@@ -309,7 +311,11 @@ hyperparams=HyperParams()
 
 def run_net(args, tensor_reel, hyperparams, ray_origins, ray_dirs, img_indices, model_sdf, model_rgb, model_bg, model_colorcal, occupancy_grid, iter_nr_for_anneal,  cos_anneal_ratio, forced_variance):
     with torch.set_grad_enabled(False):
+        ray_points_entry, ray_t_entry, ray_points_exit, ray_t_exit, does_ray_intersect_box=model_sdf.boundary_primitive.ray_intersection(ray_origins, ray_dirs)
         fg_ray_samples_packed, bg_ray_samples_packed = create_samples(args, hyperparams, ray_origins, ray_dirs, model_sdf.training, occupancy_grid, model_sdf.boundary_primitive)
+        
+        if hyperparams.do_importance_sampling:
+            fg_ray_samples_packed=importance_sampling_sdf_model(model_sdf, fg_ray_samples_packed, ray_origins, ray_dirs, ray_t_exit, iter_nr_for_anneal)
 
 
     #foreground 
@@ -320,6 +326,20 @@ def run_net(args, tensor_reel, hyperparams, ray_origins, ray_dirs, img_indices, 
     #volumetric integration
     weights, weights_sum, bg_transmittance, inv_s = model_rgb.volume_renderer_neus.compute_weights(fg_ray_samples_packed, sdf, sdf_gradients, cos_anneal_ratio, forced_variance) #neus
     pred_rgb=model_rgb.volume_renderer_neus.integrate(fg_ray_samples_packed, rgb_samples, weights)
+
+
+    #run nerf bg
+    if args.with_mask:
+        pred_rgb_bg=None
+    else: #have to model the background
+        #compute rgb and density
+        rgb_samples_bg, density_samples_bg=model_bg( bg_ray_samples_packed.samples_pos_4d, bg_ray_samples_packed.samples_dirs, iter_nr_for_anneal, model_colorcal, img_indices, ray_start_end_idx=bg_ray_samples_packed.ray_start_end_idx) 
+        #volumetric integration
+        weights_bg, weight_sum_bg, _= model_bg.volume_renderer_nerf.compute_weights(bg_ray_samples_packed, density_samples_bg.view(-1,1))
+        pred_rgb_bg=model_bg.volume_renderer_nerf.integrate(bg_ray_samples_packed, rgb_samples_bg, weights_bg)
+        #combine
+        pred_rgb_bg = bg_transmittance.view(-1,1) * pred_rgb_bg
+        pred_rgb = pred_rgb + pred_rgb_bg
 
 
 
@@ -681,12 +701,9 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
             if hyperparams.use_occupancy_grid:
                 #highsdf just to avoice voxels becoming "occcupied" due to their sdf dropping to zero
                 offsurface_points=model_sdf.boundary_primitive.rand_points_inside(nr_points=1024)
-                is_in_occupied_space=occupancy_grid.check_occupancy(offsurface_points)
                 sdf_rand, _=model_sdf( offsurface_points, iter_nr_for_anneal)
-                loss_offsurface_high_sdf=torch.exp(-1e2 * torch.abs(sdf_rand))
-                loss_offsurface_high_sdf=loss_offsurface_high_sdf*is_in_occupied_space
-                loss_offsurface_high_sdf=loss_offsurface_high_sdf.mean()
-                loss+=loss_offsurface_high_sdf*1e-3
+                loss_offsurface_high_sdf=torch.exp(-1e2 * torch.abs(sdf_rand)).mean()
+                loss+=loss_offsurface_high_sdf*1e-4
 
             #loss on lipshitz
             # loss_lipthitz=1
@@ -746,7 +763,7 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
                 
 
                 #sphere trace those pixels
-                ray_end, ray_end_sdf, ray_end_gradient, traced_samples_packed=sphere_trace(10, ray_origins, ray_dirs, model_sdf, return_gradients=True, sdf_multiplier=1.0, sdf_converged_tresh=0.005, occupancy_grid=occupancy_grid)
+                ray_end, ray_end_sdf, ray_end_gradient, geom_feat_end, traced_samples_packed=sphere_trace(10, ray_origins, ray_dirs, model_sdf, return_gradients=True, sdf_multiplier=1.0, sdf_converged_tresh=0.005, occupancy_grid=occupancy_grid)
                 #check if we are in occupied space with the traced samples
                 is_within_bounds= model_sdf.boundary_primitive.check_point_inside_primitive(ray_end)
                 if hyperparams.use_occupancy_grid:
@@ -761,13 +778,19 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
                 # ray_end_gradient_integrated, _=VolumeRendering.sum_over_each_ray(traced_samples_packed, ray_end_gradient)
                 ray_end_gradient_integrated=model_rgb.volume_renderer_neus.integrate(traced_samples_packed, ray_end_gradient, weights)
 
-                #visualize
+                #get also rgb
+                rgb_samples = model_rgb(traced_samples_packed.samples_pos, traced_samples_packed.samples_dirs, ray_end_gradient, geom_feat_end, iter_nr_for_anneal)
+                pred_rgb_integrated=model_rgb.volume_renderer_neus.integrate(traced_samples_packed, rgb_samples, weights)
+
+                #visualize normal
                 ray_end_normal=F.normalize(ray_end_gradient_integrated, dim=1)
                 ray_end_normal_vis=(ray_end_normal+1.0)*0.5
                 ray_end_normal_tex=ray_end_normal_vis.view(vis_height, vis_width, 3)
                 ray_end_normal_img=tex2img(ray_end_normal_tex)
                 Gui.show(tensor2mat(ray_end_normal_img), "ray_end_normal_img")
-                #get rgb
+                #vis_rgb
+                pred_rgb_img=lin2nchw(pred_rgb_integrated, vis_height, vis_width)
+                Gui.show(tensor2mat(pred_rgb_img).rgb2bgr(), "pred_rgb_img")
 
 
                 # ray_end_converged, ray_end_gradient_converged, is_converged=filter_unconverged_points(ray_end, ray_end_sdf, ray_end_gradient) #leaves only the points that are converged
