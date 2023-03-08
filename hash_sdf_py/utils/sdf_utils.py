@@ -131,6 +131,7 @@ def sphere_trace(nr_sphere_traces, ray_origins, ray_dirs, model, return_gradient
         voxel_size=1.0/occupancy_grid.get_nr_voxels_per_dim()
         pos=pos+dirs*voxel_size*0.5
     else:
+        #create also ray samples packed and advance them like so when we return from this function we return a ray_samples_packed regardless if we use occupancy or not
         ray_samples_packed=RaySamplesPacked(ray_origins.shape[0], ray_origins.shape[0])
         ray_samples_packed.initialize_with_one_sample_per_ray(ray_points_entry, ray_dirs)
         # pos=ray_points_entry

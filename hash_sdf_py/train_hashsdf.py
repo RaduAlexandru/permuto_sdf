@@ -19,6 +19,7 @@ from hash_sdf  import TrainParams
 from hash_sdf  import NGPGui
 from hash_sdf  import OccupancyGrid
 from hash_sdf  import Sphere
+from hash_sdf  import VolumeRendering
 from hash_sdf_py.models.models import SDF
 from hash_sdf_py.models.models import RGB
 from hash_sdf_py.models.models import NerfHash
@@ -57,8 +58,8 @@ config_path=os.path.join( os.path.dirname( os.path.realpath(__file__) ) , '../co
 train_params=TrainParams.create(config_path)    
 class HyperParams:
     lr= 1e-3
-    # nr_iter_sphere_fit=4000
-    nr_iter_sphere_fit=1
+    nr_iter_sphere_fit=4000
+    # nr_iter_sphere_fit=1
     forced_variance_finish_iter=35000
     eikonal_weight=0.04
     curvature_weight=1300.0
@@ -676,11 +677,16 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
                 loss_curvature=(torch.clamp(sdf_curvature,max=0.5).abs().view(-1)   ).mean()
                 loss+=loss_curvature* hyperparams.curvature_weight*1e-3 *global_weight_curvature
 
-            #highsdf just to avoice voxels becoming "occcupied" due to their sdf dropping to zero
-            offsurface_points=model_sdf.boundary_primitive.rand_points_inside(nr_points=1024)
-            sdf_rand, _=model_sdf( offsurface_points, iter_nr_for_anneal)
-            loss_offsurface_high_sdf=torch.exp(-1e2 * torch.abs(sdf_rand)).mean()
-            loss+=loss_offsurface_high_sdf*1e-3
+
+            if hyperparams.use_occupancy_grid:
+                #highsdf just to avoice voxels becoming "occcupied" due to their sdf dropping to zero
+                offsurface_points=model_sdf.boundary_primitive.rand_points_inside(nr_points=1024)
+                is_in_occupied_space=occupancy_grid.check_occupancy(offsurface_points)
+                sdf_rand, _=model_sdf( offsurface_points, iter_nr_for_anneal)
+                loss_offsurface_high_sdf=torch.exp(-1e2 * torch.abs(sdf_rand))
+                loss_offsurface_high_sdf=loss_offsurface_high_sdf*is_in_occupied_space
+                loss_offsurface_high_sdf=loss_offsurface_high_sdf.mean()
+                loss+=loss_offsurface_high_sdf*1e-3
 
             #loss on lipshitz
             # loss_lipthitz=1
@@ -740,16 +746,39 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
                 
 
                 #sphere trace those pixels
-                ray_end, ray_end_sdf, ray_end_gradient=sphere_trace(10, ray_origins, ray_dirs, model_sdf, return_gradients=True, sdf_multiplier=1.0, sdf_converged_tresh=0.005, occupancy_grid=occupancy_grid)
-                ray_end_converged, ray_end_gradient_converged, is_converged=filter_unconverged_points(ray_end, ray_end_sdf, ray_end_gradient) #leaves only the points that are converged
-                ray_end_normal=F.normalize(ray_end_gradient, dim=1)
-                ray_end_normal_vis=(ray_end_normal+1.0)*0.5
-                show_points(ray_end, "ray_end", color_per_vert=ray_end_normal_vis, normal_per_vert=ray_end_normal)
-                ray_end_normal=F.normalize(ray_end_gradient_converged, dim=1)
+                ray_end, ray_end_sdf, ray_end_gradient, traced_samples_packed=sphere_trace(10, ray_origins, ray_dirs, model_sdf, return_gradients=True, sdf_multiplier=1.0, sdf_converged_tresh=0.005, occupancy_grid=occupancy_grid)
+                #check if we are in occupied space with the traced samples
+                is_within_bounds= model_sdf.boundary_primitive.check_point_inside_primitive(ray_end)
+                if hyperparams.use_occupancy_grid:
+                    is_in_occupied_space=occupancy_grid.check_occupancy(ray_end)
+                    is_within_bounds=torch.logical_and(is_in_occupied_space.view(-1), is_within_bounds.view(-1) )
+                #make weigths for each sample that will be just 1 and 0 if the samples is in empty space
+                weights=torch.ones_like(ray_end)[:,0:1].view(-1,1)
+                weights[torch.logical_not(is_within_bounds)]=0.0 #set the samples that are outside of the occupancy grid to zero
+                # pred_rgb=model.volume_renderer.integrator_module(ray_samples_packed, rgb_samples, weights)
+        
+                #we cannot use the ray_end_gradient directly because that is only defined at the samples, but now all rays may have samples because we used a occupancy grid, so we need to run the integrator
+                # ray_end_gradient_integrated, _=VolumeRendering.sum_over_each_ray(traced_samples_packed, ray_end_gradient)
+                ray_end_gradient_integrated=model_rgb.volume_renderer_neus.integrate(traced_samples_packed, ray_end_gradient, weights)
+
+                #visualize
+                ray_end_normal=F.normalize(ray_end_gradient_integrated, dim=1)
                 ray_end_normal_vis=(ray_end_normal+1.0)*0.5
                 ray_end_normal_tex=ray_end_normal_vis.view(vis_height, vis_width, 3)
                 ray_end_normal_img=tex2img(ray_end_normal_tex)
                 Gui.show(tensor2mat(ray_end_normal_img), "ray_end_normal_img")
+                #get rgb
+
+
+                # ray_end_converged, ray_end_gradient_converged, is_converged=filter_unconverged_points(ray_end, ray_end_sdf, ray_end_gradient) #leaves only the points that are converged
+                # ray_end_normal=F.normalize(ray_end_gradient, dim=1)
+                # ray_end_normal_vis=(ray_end_normal+1.0)*0.5
+                # show_points(ray_end, "ray_end", color_per_vert=ray_end_normal_vis, normal_per_vert=ray_end_normal)
+                # ray_end_normal=F.normalize(ray_end_gradient_converged, dim=1)
+                # ray_end_normal_vis=(ray_end_normal+1.0)*0.5
+                # ray_end_normal_tex=ray_end_normal_vis.view(vis_height, vis_width, 3)
+                # ray_end_normal_img=tex2img(ray_end_normal_tex)
+                # Gui.show(tensor2mat(ray_end_normal_img), "ray_end_normal_img")
 
 
         if with_viewer:
