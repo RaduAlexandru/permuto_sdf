@@ -23,7 +23,6 @@ from hash_sdf_py.utils.common_utils import create_bb_for_dataset
 from hash_sdf_py.utils.common_utils import create_bb_mesh
 from hash_sdf_py.utils.common_utils import show_points
 from hash_sdf_py.utils.common_utils import lin2nchw
-from hash_sdf_py.utils.common_utils import summary
 from hash_sdf_py.utils.nerf_utils import create_samples
 
 from hash_sdf_py.callbacks.callback_utils import *
@@ -145,8 +144,10 @@ def run():
     model=NerfHash(3,  boundary_primitive=aabb, nr_iters_for_c2f=hyperparams.foreground_nr_iters_for_c2f ).to("cuda")
     model_bg=NerfHash(4, boundary_primitive=aabb, nr_iters_for_c2f=hyperparams.background_nr_iters_for_c2f ).to("cuda")
     occupancy_grid=OccupancyGrid(64, 1.0, [0,0,0])
-    # model_colorcal=Colorcal(loader_train.nr_samples(), 0)
-    model_colorcal=None
+    if hyperparams.use_color_calibration:
+        model_colorcal=Colorcal(loader_train.nr_samples(), 0)
+    else:
+        model_colorcal=None
     model.train(phase.grad)
     model_bg.train(phase.grad)
 
@@ -222,7 +223,7 @@ def run():
                 fg_ray_samples_packed, bg_ray_samples_packed = create_samples(args, hyperparams, ray_origins, ray_dirs, model.training, occupancy_grid, aabb)
 
                 #forward net
-                pred_rgb, pred_rgb_bg, weights_sum, samples_fg=run_net(args, tensor_reel, hyperparams, ray_origins, ray_dirs, img_indices, model, model_bg, model_colorcal, occupancy_grid, phase.iter_nr)
+                pred_rgb, pred_rgb_bg, weights_sum, samples_fg=run_net(args, tensor_reel, hyperparams, ray_origins, ray_dirs, img_indices, model, model_bg, None, occupancy_grid, phase.iter_nr)
 
                 #vis points
                 show_points(samples_pos_fg,"samples_pos_fg")

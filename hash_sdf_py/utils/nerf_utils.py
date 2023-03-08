@@ -716,7 +716,7 @@ def create_samples(args, hyperparams, ray_origins, ray_dirs, jitter_samples, occ
 	#foreground samples
 	if hyperparams.use_occupancy_grid and occupancy_grid is not None:
 		fg_ray_samples_packed=occupancy_grid.compute_samples_in_occupied_regions(ray_origins, ray_dirs, ray_t_entry, ray_t_exit, hyperparams.min_dist_between_samples, hyperparams.max_nr_samples_per_ray, jitter_samples)
-		fg_ray_samples_packed=fg_ray_samples_packed.get_valid_samples()
+		fg_ray_samples_packed=fg_ray_samples_packed.compact_to_valid_samples()
 	else:
 		# print("todo")
 		# z_vals = model.ray_sampler.get_z_vals(ray_origins, ray_dirs, hyperparams.max_nr_samples_per_ray, jitter_samples)
@@ -732,7 +732,7 @@ def create_samples(args, hyperparams, ray_origins, ray_dirs, jitter_samples, occ
 
 
 		fg_ray_samples_packed= RaySampler.compute_samples_fg(ray_origins, ray_dirs, ray_t_entry, ray_t_exit, hyperparams.min_dist_between_samples, hyperparams.max_nr_samples_per_ray, bounding_primitive.m_radius, bounding_primitive.m_center_tensor, jitter_samples)
-		fg_ray_samples_packed=fg_ray_samples_packed.get_valid_samples()
+		fg_ray_samples_packed=fg_ray_samples_packed.compact_to_valid_samples()
 
 
 	#create ray samples for bg

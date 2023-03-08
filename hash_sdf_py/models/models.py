@@ -3145,7 +3145,7 @@ class NerfHash(torch.nn.Module):
 
     
     # def forward(self, ray_origins, ray_dirs, ls, iter_nr, nr_samples_per_ray):
-    def forward(self, samples_pos, samples_dirs, iter_nr, model_colorcal=None, img_indices=None, ray_start_end_idx=None, nr_rays=None):
+    def forward(self, samples_pos, samples_dirs, iter_nr, model_colorcal=None, img_indices=None, ray_start_end_idx=None):
 
 
         assert samples_pos.shape[1] == self.in_channels, "points should be N x in_channels"
@@ -3177,11 +3177,8 @@ class NerfHash(torch.nn.Module):
         density=self.softplus(density) #similar to mipnerf
 
 
-        if model_colorcal is not None and img_indices is not None:
-            if ray_start_end_idx is not None:
-                rgb=model_colorcal.calib_RGB_samples_packed(rgb, img_indices, ray_start_end_idx )
-            else:
-                rgb=model_colorcal.calib_RGB_rays_reel(rgb, img_indices, nr_rays )
+        if model_colorcal is not None:
+            rgb=model_colorcal.calib_RGB_samples_packed(rgb, img_indices, ray_start_end_idx )
 
         rgb=self.sigmoid(rgb)
 
@@ -3625,92 +3622,6 @@ class Colorcal(torch.nn.Module):
         self.bias = torch.nn.Parameter(
                 torch.zeros(nr_cams, 3))
 
-
-    def calib_RGB_nchw(self, image, camindex):
-
-        if camindex==self.idx_with_fixed_calib:
-            return image
-
-        # collect weights
-        weight_delta = self.weight_delta[camindex]
-        weight=1.0+weight_delta
-        bias = self.bias[camindex]
-
-        print("self weights has shape",self.weight.shape)
-        print("weight has shape",weight.shape)
-
-        # reshape
-        b = image.size(0)
-        groups = b * 3
-        image = image.view(1, -1, image.size(2), image.size(3))
-        weight = weight.view(-1, 1, 1, 1)
-        bias = bias.view(-1)
-
-        # conv
-        result = F.conv2d(image, weight, bias, groups=groups)
-
-        # unshape
-        result = result.view(b, 3, image.size(2), image.size(3))
-        return result
-
-    def calib_RGB_lin(self, rgb_linear, camindex):
-        #RGB_linear is X,3
-        assert rgb_linear.shape[1]==3, "RGB_linear should be Nx3"
-        assert rgb_linear.dim()==2, "RGB_linear should have 2 dimensions"
-
-        # print("rgb_linear input", rgb_linear.shape)
-
-        rgb_img=rgb_linear.permute(1,0) # 3xN
-        # print("rgb_img afterpermute", rgb_img.shape)
-        rgb_img=rgb_img.contiguous().view(1,3,1,-1) #n,c,h,w
-
-        # print("rgb_img", rgb_img.shape)
-
-        rgb_img=self.calib_RGB_nchw(rgb_img, camindex)
-        # print("rgb_img after calib", rgb_img.shape)
-
-        #back to linear
-        rgb_linear=rgb_img.view(3,-1) #back to Nx3
-        # print("rgb_linear output before permuting", rgb_linear.shape)
-        rgb_linear=rgb_linear.permute(1,0)
-        # print("rgb_linear output", rgb_linear.shape)
-
-        assert rgb_linear.shape[1]==3, "RGB_linear should be Nx3"
-        assert rgb_linear.dim()==2, "RGB_linear should have 2 dimensions"
-
-        return rgb_linear
-
-    def calib_RGB_rays_reel(self, rgb_linear, per_pixel_img_indices, nr_rays):
-        # print("rgb_linear",rgb_linear.shape)
-        # print("per_pixel_img_indices",per_pixel_img_indices.shape)
-        rgb_linear=rgb_linear.view(nr_rays, -1, 3)
-        #RGB_linear is nr_rays, nr_samples,3
-        assert rgb_linear.dim()==3, "RGB_linear should have 3 dimensions corresponding to nr_rays, nr_samples, 3"
-        assert rgb_linear.shape[2]==3, "RGB_linear should be nr_rays,nr_samples,3"
-        #each pixel may be sampled from a different image
-        assert per_pixel_img_indices.shape[0]==rgb_linear.shape[0], "per_pixel_img_indices should have the same nr of pixel as RGB_linear "
-        assert per_pixel_img_indices.dim()==1, "per_pixel_img_indices should have 1 dimensions"
-
-        nr_rays=rgb_linear.shape[0]
-        nr_samples=rgb_linear.shape[1]
-
-        #gather 3 weights and 3 biases for each pixel
-        weights_delta_per_pixel=torch.index_select(self.weight_delta, 0, per_pixel_img_indices.long())
-        weights_per_pixel=1.0+weights_delta_per_pixel
-        bias_per_pixel=torch.index_select(self.bias, 0, per_pixel_img_indices.long())
-        # print("weights_per_pixel", weights_per_pixel.shape)
-        # print("bias_per_pixel", bias_per_pixel.shape)
-
-        #for the camera that is fixed, it's weights should be 1 and bias should be 0
-        fixed_pixels=per_pixel_img_indices==self.idx_with_fixed_calib
-        weights_per_pixel[fixed_pixels,:]=1.0
-        bias_per_pixel[fixed_pixels,:]=0.0
-
-
-        rgb_linear_calib=rgb_linear*weights_per_pixel.view(nr_rays,1,3)+bias_per_pixel.view(nr_rays,1,3)
-
-        return rgb_linear_calib
-
     def calib_RGB_samples_packed(self, rgb_samples, per_pixel_img_indices, ray_start_end_idx):
         # rgb_samples_contains the rgb for eahc sample in a nr_samples_total x3. This is due tot he fact that we sue an occupancy grid so eveyr ray has different number of samples
         #RGB_linear is nr_rays, nr_samples,3
@@ -3724,29 +3635,18 @@ class Colorcal(torch.nn.Module):
         weights_delta_per_pixel=torch.index_select(self.weight_delta, 0, per_pixel_img_indices.long()) #nr_rays x3
         weights_per_pixel=1.0+weights_delta_per_pixel
         bias_per_pixel=torch.index_select(self.bias, 0, per_pixel_img_indices.long()) #nr_rays x3
-        # print("weights_per_pixel", weights_per_pixel.shape)
-        # print("bias_per_pixel", bias_per_pixel.shape)
 
         #for the camera that is fixed, it's weights should be 1 and bias should be 0
         fixed_pixels=per_pixel_img_indices==self.idx_with_fixed_calib
         weights_per_pixel[fixed_pixels,:]=1.0
         bias_per_pixel[fixed_pixels,:]=0.0
 
-        # print("before repeting",weights_per_pixel)
-        # print("per_pixel_img_indices",per_pixel_img_indices)
 
         #get the nr of samples per_ray
         nr_samples_per_ray=ray_start_end_idx[:,1:2]-ray_start_end_idx[:,0:1] 
         #repeat each weight and each bias, as many samples as we have for each ray
         weights_per_pixel=torch.repeat_interleave(weights_per_pixel, nr_samples_per_ray.view(-1), dim=0)
         bias_per_pixel=torch.repeat_interleave(bias_per_pixel, nr_samples_per_ray.view(-1), dim=0)
-        # print("rgb_samples",rgb_samples.shape)
-        # print("weights_per_pixel", weights_per_pixel.shape)
-        # print("bias_per_pixel", bias_per_pixel.shape)
-
-        # print("nr_samples_per_ray",nr_samples_per_ray)
-
-        # print("after repeting",weights_per_pixel)
 
         rgb_samples=rgb_samples*weights_per_pixel+bias_per_pixel
 
