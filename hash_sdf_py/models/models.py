@@ -3209,11 +3209,18 @@ class NerfHash(torch.nn.Module):
 
         return density
 
-    def save(self, root_folder, experiment_name, iter_nr):
+    def path_to_save_model(self, ckpt_folder, experiment_name, iter_nr):
+        models_path=os.path.join(ckpt_folder, experiment_name, str(iter_nr), "models")
+        return models_path
 
-        models_path=os.path.join(root_folder,"checkpoints/", experiment_name, str(iter_nr), "models")
+    def save(self, ckpt_folder, experiment_name, iter_nr, additional_name=None):
+
+        # models_path=os.path.join(ckpt_folder, experiment_name, str(iter_nr), "models")
+        models_path=self.path_to_save_model(ckpt_folder, experiment_name, iter_nr)
         os.makedirs(models_path, exist_ok=True)
-        torch.save(self.state_dict(), os.path.join(models_path, "nerf_hash_bg_model.pt")  )
+        torch.save(self.state_dict(), os.path.join(models_path, "nerf_hash_model"+str(additional_name or '')+".pt")  )
+
+        return models_path
 
 class Nerf(torch.nn.Module):
 
@@ -3652,9 +3659,14 @@ class Colorcal(torch.nn.Module):
 
         return rgb_samples
 
-    def save(self, root_folder, experiment_name, iter_nr):
+    def path_to_save_model(self, ckpt_folder, experiment_name, iter_nr):
+        models_path=os.path.join(ckpt_folder, experiment_name, str(iter_nr), "models")
+        return models_path
 
-        models_path=os.path.join(root_folder,"checkpoints/", experiment_name, str(iter_nr), "models")
+    def save(self, ckpt_folder, experiment_name, iter_nr):
+
+        # models_path=os.path.join(root_folder,"checkpoints/", experiment_name, str(iter_nr), "models")
+        models_path=self.path_to_save_model(ckpt_folder, experiment_name, iter_nr)
         os.makedirs(models_path, exist_ok=True)
         torch.save(self.state_dict(), os.path.join(models_path, "colorcal_model.pt")  )
 
