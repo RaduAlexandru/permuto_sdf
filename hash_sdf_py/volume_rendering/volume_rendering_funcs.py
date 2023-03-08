@@ -158,11 +158,11 @@ class CumprodAlpha2TransmittanceFunc(Function):
         return None, grad_alpha 
 
 
-class IntegrateColorAndWeightsFunc(Function):
+class IntegrateWithWeightsFunc(Function):
     @staticmethod
     def forward(ctx, ray_samples_packed, rgb_samples, weights_samples):
 
-        pred_rgb=VolumeRendering.integrate_rgb_and_weights(ray_samples_packed, rgb_samples, weights_samples)
+        pred_rgb=VolumeRendering.integrate_with_weights(ray_samples_packed, rgb_samples, weights_samples)
         
         ctx.save_for_backward(rgb_samples, weights_samples, pred_rgb)
         ctx.ray_samples_packed=ray_samples_packed
@@ -182,7 +182,7 @@ class IntegrateColorAndWeightsFunc(Function):
 
 
 
-        grad_rgb_samples, grad_weights_samples =VolumeRendering.integrate_rgb_and_weights_backward(grad_pred_rgb, ray_samples_packed,  rgb_samples, weights_samples, pred_rgb) 
+        grad_rgb_samples, grad_weights_samples =VolumeRendering.integrate_with_weights_backward(grad_pred_rgb, ray_samples_packed,  rgb_samples, weights_samples, pred_rgb) 
 
 
 

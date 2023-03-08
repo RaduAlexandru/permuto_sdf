@@ -540,7 +540,7 @@ cumprod_alpha2transmittance_gpu(
 
 
 __global__ void 
-integrate_rgb_and_weights_gpu(
+integrate_with_weights_gpu(
     const int nr_rays,
     const int max_nr_samples,
     const torch::PackedTensorAccessor32<int,2,torch::RestrictPtrTraits> ray_start_end_idx,
@@ -1353,120 +1353,120 @@ combine_uniform_samples_with_imp_gpu(
 
 }
 
-__global__ void 
-compact_ray_samples_gpu(
-    const int nr_rays,
-    //samples_packed
-    const int uniform_max_nr_samples,
-    const torch::PackedTensorAccessor32<int,2,torch::RestrictPtrTraits> uniform_ray_start_end_idx,
-    const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> uniform_ray_fixed_dt,
-    const bool uniform_rays_have_equal_nr_of_samples,
-    const int uniform_fixed_nr_of_samples_per_ray,
-    const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> uniform_samples_z,
-    const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> uniform_samples_dt,
-    const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> uniform_samples_sdf,
-    const bool uniform_has_sdf,
-    const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> uniform_samples_pos,
-    const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> uniform_samples_dirs,
-    //output
-    torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> compressed_samples_pos,
-    torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> compressed_samples_dirs,
-    torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> compressed_samples_z,
-    torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> compressed_samples_dt,
-    torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> compressed_samples_sdf,
-    torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> compressed_ray_fixed_dt,
-    torch::PackedTensorAccessor32<int,2,torch::RestrictPtrTraits> compressed_ray_start_end_idx,
-    torch::PackedTensorAccessor32<int,1,torch::RestrictPtrTraits> compressed_cur_nr_samples
-    ) {
+// __global__ void 
+// compact_ray_samples_gpu(
+//     const int nr_rays,
+//     //samples_packed
+//     const int uniform_max_nr_samples,
+//     const torch::PackedTensorAccessor32<int,2,torch::RestrictPtrTraits> uniform_ray_start_end_idx,
+//     const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> uniform_ray_fixed_dt,
+//     const bool uniform_rays_have_equal_nr_of_samples,
+//     const int uniform_fixed_nr_of_samples_per_ray,
+//     const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> uniform_samples_z,
+//     const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> uniform_samples_dt,
+//     const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> uniform_samples_sdf,
+//     const bool uniform_has_sdf,
+//     const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> uniform_samples_pos,
+//     const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> uniform_samples_dirs,
+//     //output
+//     torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> compressed_samples_pos,
+//     torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> compressed_samples_dirs,
+//     torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> compressed_samples_z,
+//     torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> compressed_samples_dt,
+//     torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> compressed_samples_sdf,
+//     torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> compressed_ray_fixed_dt,
+//     torch::PackedTensorAccessor32<int,2,torch::RestrictPtrTraits> compressed_ray_start_end_idx,
+//     torch::PackedTensorAccessor32<int,1,torch::RestrictPtrTraits> compressed_cur_nr_samples
+//     ) {
 
-    int idx = blockIdx.x * blockDim.x + threadIdx.x; //each thread will deal with a new value
+//     int idx = blockIdx.x * blockDim.x + threadIdx.x; //each thread will deal with a new value
 
-    if(idx>=nr_rays){ //don't go out of bounds
-        return;
-    }
+//     if(idx>=nr_rays){ //don't go out of bounds
+//         return;
+//     }
 
 
 
-    //get the indexes of the start and end sample
-    int uniform_idx_start=0;
-    int uniform_idx_end=0;
-    int uniform_nr_samples=0;
-    get_start_end_ray_indices(uniform_nr_samples, uniform_idx_start, uniform_idx_end, idx, uniform_rays_have_equal_nr_of_samples, uniform_fixed_nr_of_samples_per_ray, uniform_ray_start_end_idx  );
+//     //get the indexes of the start and end sample
+//     int uniform_idx_start=0;
+//     int uniform_idx_end=0;
+//     int uniform_nr_samples=0;
+//     get_start_end_ray_indices(uniform_nr_samples, uniform_idx_start, uniform_idx_end, idx, uniform_rays_have_equal_nr_of_samples, uniform_fixed_nr_of_samples_per_ray, uniform_ray_start_end_idx  );
 
-    //preload some other stuff
-    float fixed_dt=uniform_ray_fixed_dt[idx][0];
+//     //preload some other stuff
+//     float fixed_dt=uniform_ray_fixed_dt[idx][0];
 
-    //caulcate how many samples we need for this ray
-    int compressed_nr_samples=uniform_nr_samples;
+//     //caulcate how many samples we need for this ray
+//     int compressed_nr_samples=uniform_nr_samples;
 
-    //too low nr of samples
-    if(uniform_nr_samples<=1){
-        //we set the ray quantities to 0 and there is nothing to set in the per_sample quantities because we have no samples
-        compressed_ray_fixed_dt[idx][0]=0;
-        compressed_ray_start_end_idx[idx][0]=0;
-        compressed_ray_start_end_idx[idx][1]=0;
-        return;
-    }
+//     //too low nr of samples
+//     if(uniform_nr_samples<=1){
+//         //we set the ray quantities to 0 and there is nothing to set in the per_sample quantities because we have no samples
+//         compressed_ray_fixed_dt[idx][0]=0;
+//         compressed_ray_start_end_idx[idx][0]=0;
+//         compressed_ray_start_end_idx[idx][1]=0;
+//         return;
+//     }
     
-    //allocate similar to how we do in the occupancy grid
-    int compressed_indx_start_sample=atomicAdd(&compressed_cur_nr_samples[0],compressed_nr_samples);
-    compressed_ray_start_end_idx[idx][0]=compressed_indx_start_sample;
-    compressed_ray_start_end_idx[idx][1]=compressed_indx_start_sample+compressed_nr_samples; 
+//     //allocate similar to how we do in the occupancy grid
+//     int compressed_indx_start_sample=atomicAdd(&compressed_cur_nr_samples[0],compressed_nr_samples);
+//     compressed_ray_start_end_idx[idx][0]=compressed_indx_start_sample;
+//     compressed_ray_start_end_idx[idx][1]=compressed_indx_start_sample+compressed_nr_samples; 
 
-    // if( (compressed_indx_start_sample+compressed_nr_samples)>compressed_max_nr_samples){
-    //     printf("this really shouldn't happen that we are writing more samples than the combined_max_nr_samples. How did that happen \n");
-    //     return;
-    // }
-
-
-    // float t_exit=ray_t_exit[idx][0];
+//     // if( (compressed_indx_start_sample+compressed_nr_samples)>compressed_max_nr_samples){
+//     //     printf("this really shouldn't happen that we are writing more samples than the combined_max_nr_samples. How did that happen \n");
+//     //     return;
+//     // }
 
 
+//     // float t_exit=ray_t_exit[idx][0];
 
-    compressed_ray_fixed_dt[idx][0]=fixed_dt;
 
-    //start writing all the samples
-    for(int i=0; i<compressed_nr_samples; i++){
+
+//     compressed_ray_fixed_dt[idx][0]=fixed_dt;
+
+//     //start writing all the samples
+//     for(int i=0; i<compressed_nr_samples; i++){
         
-        // printf("Adding zuniform %f \n", z_uniform);
-        //write the curent uniform sample
-        // float3 pos = ray_origin+z_uniform*ray_dir;
-        //store positions
-        compressed_samples_pos[compressed_indx_start_sample+i][0]=uniform_samples_pos[uniform_idx_start+i][0];
-        compressed_samples_pos[compressed_indx_start_sample+i][1]=uniform_samples_pos[uniform_idx_start+i][1];
-        compressed_samples_pos[compressed_indx_start_sample+i][2]=uniform_samples_pos[uniform_idx_start+i][2];
-        //store dirs
-        compressed_samples_dirs[compressed_indx_start_sample+i][0]=uniform_samples_dirs[uniform_idx_start+i][0];
-        compressed_samples_dirs[compressed_indx_start_sample+i][1]=uniform_samples_dirs[uniform_idx_start+i][1];
-        compressed_samples_dirs[compressed_indx_start_sample+i][2]=uniform_samples_dirs[uniform_idx_start+i][2];
-        //store z
-        compressed_samples_z[compressed_indx_start_sample+i][0]=uniform_samples_z[uniform_idx_start+i][0];
-        //store sdf if needed
-        if (uniform_has_sdf){
-            compressed_samples_sdf[compressed_indx_start_sample+i][0]=uniform_samples_sdf[uniform_idx_start+i][0];
-        }
+//         // printf("Adding zuniform %f \n", z_uniform);
+//         //write the curent uniform sample
+//         // float3 pos = ray_origin+z_uniform*ray_dir;
+//         //store positions
+//         compressed_samples_pos[compressed_indx_start_sample+i][0]=uniform_samples_pos[uniform_idx_start+i][0];
+//         compressed_samples_pos[compressed_indx_start_sample+i][1]=uniform_samples_pos[uniform_idx_start+i][1];
+//         compressed_samples_pos[compressed_indx_start_sample+i][2]=uniform_samples_pos[uniform_idx_start+i][2];
+//         //store dirs
+//         compressed_samples_dirs[compressed_indx_start_sample+i][0]=uniform_samples_dirs[uniform_idx_start+i][0];
+//         compressed_samples_dirs[compressed_indx_start_sample+i][1]=uniform_samples_dirs[uniform_idx_start+i][1];
+//         compressed_samples_dirs[compressed_indx_start_sample+i][2]=uniform_samples_dirs[uniform_idx_start+i][2];
+//         //store z
+//         compressed_samples_z[compressed_indx_start_sample+i][0]=uniform_samples_z[uniform_idx_start+i][0];
+//         //store sdf if needed
+//         if (uniform_has_sdf){
+//             compressed_samples_sdf[compressed_indx_start_sample+i][0]=uniform_samples_sdf[uniform_idx_start+i][0];
+//         }
 
-        compressed_samples_dt[compressed_indx_start_sample+i][0]=uniform_samples_dt[uniform_idx_start+i][0];
+//         compressed_samples_dt[compressed_indx_start_sample+i][0]=uniform_samples_dt[uniform_idx_start+i][0];
         
-    }
+//     }
 
 
-    // //now, that we have all the samples, we can also write dt since dt is the distance from cur to next
-    // for(int i=0; i<compressed_nr_samples-1; i++){
-    //     float cur_z=compressed_samples_z[compressed_indx_start_sample+i][0];
-    //     float next_z=compressed_samples_z[compressed_indx_start_sample+i+1][0];
-    //     float dt=next_z-cur_z;
-    //     dt=min(dt, fixed_dt);
-    //     compressed_samples_dt[compressed_indx_start_sample+i][0]=dt;
-    // }
-    // //last combined sample
-    // float last_sample_z=compressed_samples_z[compressed_indx_start_sample+compressed_nr_samples-1][0];
-    // float remaining_dist_until_border=t_exit-last_sample_z;
-    // compressed_samples_dt[compressed_indx_start_sample+compressed_nr_samples-1][0]=clamp(remaining_dist_until_border, 0.0, fixed_dt);
-    // // combined_samples_dt[combined_indx_start_sample+combined_nr_samples-1][0]=fixed_dt;
+//     // //now, that we have all the samples, we can also write dt since dt is the distance from cur to next
+//     // for(int i=0; i<compressed_nr_samples-1; i++){
+//     //     float cur_z=compressed_samples_z[compressed_indx_start_sample+i][0];
+//     //     float next_z=compressed_samples_z[compressed_indx_start_sample+i+1][0];
+//     //     float dt=next_z-cur_z;
+//     //     dt=min(dt, fixed_dt);
+//     //     compressed_samples_dt[compressed_indx_start_sample+i][0]=dt;
+//     // }
+//     // //last combined sample
+//     // float last_sample_z=compressed_samples_z[compressed_indx_start_sample+compressed_nr_samples-1][0];
+//     // float remaining_dist_until_border=t_exit-last_sample_z;
+//     // compressed_samples_dt[compressed_indx_start_sample+compressed_nr_samples-1][0]=clamp(remaining_dist_until_border, 0.0, fixed_dt);
+//     // // combined_samples_dt[combined_indx_start_sample+combined_nr_samples-1][0]=fixed_dt;
 
 
-}
+// }
 
 
 
@@ -1545,7 +1545,7 @@ cumprod_alpha2transmittance_backward_gpu(
 
 
 __global__ void 
-integrate_rgb_and_weights_backward_gpu(
+integrate_with_weights_backward_gpu(
     const int nr_rays,
     const int max_nr_samples,
     const torch::PackedTensorAccessor32<int,2,torch::RestrictPtrTraits> ray_start_end_idx,

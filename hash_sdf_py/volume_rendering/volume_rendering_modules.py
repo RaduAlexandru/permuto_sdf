@@ -35,13 +35,13 @@ class CumprodAlpha2TransmittanceModule(torch.nn.Module):
         return transmittance, bg_transmittance 
 
 
-class IntegrateColorAndWeightsModule(torch.nn.Module):
+class IntegrateWithWeightsModule(torch.nn.Module):
     def __init__(self):
-        super(IntegrateColorAndWeightsModule, self).__init__()
+        super(IntegrateWithWeightsModule, self).__init__()
 
     def forward(self, ray_samples_packed, rgb_samples, weights_samples):
 
-        pred_rgb=IntegrateColorAndWeightsFunc.apply(ray_samples_packed, rgb_samples, weights_samples)
+        pred_rgb=IntegrateWithWeightsFunc.apply(ray_samples_packed, rgb_samples, weights_samples)
 
         return pred_rgb
 
@@ -66,7 +66,7 @@ class VolumeRenderingNerf(torch.nn.Module):
         self.softplus=torch.nn.Softplus()
 
         self.cumprod_alpha2transmittance_module=CumprodAlpha2TransmittanceModule()
-        self.integrator_module=IntegrateColorAndWeightsModule()
+        self.integrator_module=IntegrateWithWeightsModule()
         self.sum_ray_module=SumOverRayModule()
 
     #The fully fusedvolume rendering in VolumeRenderingGeneralModule.volume_render_nerf doesnt propagate gradients from the sampel weight so we cannot use mask supervision,  we do this now with a more pytorch thing so we can propagate gradient also from the mask loss

@@ -219,7 +219,7 @@ std::tuple<torch::Tensor, torch::Tensor> VolumeRendering::cumprod_alpha2transmit
 }
 
 
-torch::Tensor VolumeRendering::integrate_rgb_and_weights(const RaySamplesPacked& ray_samples_packed, const torch::Tensor& rgb_samples, const torch::Tensor& weights_samples){
+torch::Tensor VolumeRendering::integrate_with_weights(const RaySamplesPacked& ray_samples_packed, const torch::Tensor& rgb_samples, const torch::Tensor& weights_samples){
 
     int nr_rays=ray_samples_packed.ray_start_end_idx.size(0);
     int nr_samples_total=ray_samples_packed.samples_z.size(0);
@@ -232,7 +232,7 @@ torch::Tensor VolumeRendering::integrate_rgb_and_weights(const RaySamplesPacked&
 
 
 
-    VolumeRenderingGPU::integrate_rgb_and_weights_gpu<<<blocks, BLOCK_SIZE>>>(
+    VolumeRenderingGPU::integrate_with_weights_gpu<<<blocks, BLOCK_SIZE>>>(
                 nr_rays,
                 ray_samples_packed.max_nr_samples, //useful for checking if the ray has samples higher the the max_nr_samples in which case we don't integrate
                 ray_samples_packed.ray_start_end_idx.packed_accessor32<int,2,torch::RestrictPtrTraits>(),
@@ -554,53 +554,53 @@ RaySamplesPacked VolumeRendering::combine_uniform_samples_with_imp(const torch::
 }
 
 
-RaySamplesPacked VolumeRendering::compact_ray_samples(const RaySamplesPacked& ray_samples_packed ){
+// RaySamplesPacked VolumeRendering::compact_ray_samples(const RaySamplesPacked& ray_samples_packed ){
 
 
-    int nr_rays=ray_samples_packed.ray_start_end_idx.size(0);
-    int nr_samples_uniform_total=ray_samples_packed.samples_z.size(0);
+//     int nr_rays=ray_samples_packed.ray_start_end_idx.size(0);
+//     int nr_samples_uniform_total=ray_samples_packed.samples_z.size(0);
 
-    RaySamplesPacked ray_samples_compressed(nr_rays, nr_samples_uniform_total);
-    ray_samples_compressed.has_sdf=ray_samples_packed.has_sdf;
-    ray_samples_compressed.rays_have_equal_nr_of_samples=ray_samples_packed.rays_have_equal_nr_of_samples;
-    ray_samples_compressed.fixed_nr_of_samples_per_ray=ray_samples_packed.fixed_nr_of_samples_per_ray;
+//     RaySamplesPacked ray_samples_compressed(nr_rays, nr_samples_uniform_total);
+//     ray_samples_compressed.has_sdf=ray_samples_packed.has_sdf;
+//     ray_samples_compressed.rays_have_equal_nr_of_samples=ray_samples_packed.rays_have_equal_nr_of_samples;
+//     ray_samples_compressed.fixed_nr_of_samples_per_ray=ray_samples_packed.fixed_nr_of_samples_per_ray;
 
-    //fill the samples
-    const dim3 blocks = { (unsigned int)div_round_up(nr_rays, BLOCK_SIZE), 1, 1 }; 
+//     //fill the samples
+//     const dim3 blocks = { (unsigned int)div_round_up(nr_rays, BLOCK_SIZE), 1, 1 }; 
 
 
 
-    VolumeRenderingGPU::compact_ray_samples_gpu<<<blocks, BLOCK_SIZE>>>(
-                nr_rays,
-                //input_ray_samples_packed
-                ray_samples_packed.max_nr_samples, //useful for checking if the ray has samples higher the the max_nr_samples in which case we don't integrate
-                ray_samples_packed.ray_start_end_idx.packed_accessor32<int,2,torch::RestrictPtrTraits>(),
-                ray_samples_packed.ray_fixed_dt.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
-                ray_samples_packed.rays_have_equal_nr_of_samples,
-                ray_samples_packed.fixed_nr_of_samples_per_ray,
-                ray_samples_packed.samples_z.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
-                ray_samples_packed.samples_dt.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
-                ray_samples_packed.samples_sdf.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
-                ray_samples_packed.has_sdf,
-                ray_samples_packed.samples_pos.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
-                ray_samples_packed.samples_dirs.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
-                //output
-                ray_samples_compressed.samples_pos.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
-                ray_samples_compressed.samples_dirs.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
-                ray_samples_compressed.samples_z.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
-                ray_samples_compressed.samples_dt.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
-                ray_samples_compressed.samples_sdf.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
-                ray_samples_compressed.ray_fixed_dt.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
-                ray_samples_compressed.ray_start_end_idx.packed_accessor32<int,2,torch::RestrictPtrTraits>(),
-                ray_samples_compressed.cur_nr_samples.packed_accessor32<int,1,torch::RestrictPtrTraits>()
-            );
+//     VolumeRenderingGPU::compact_ray_samples_gpu<<<blocks, BLOCK_SIZE>>>(
+//                 nr_rays,
+//                 //input_ray_samples_packed
+//                 ray_samples_packed.max_nr_samples, //useful for checking if the ray has samples higher the the max_nr_samples in which case we don't integrate
+//                 ray_samples_packed.ray_start_end_idx.packed_accessor32<int,2,torch::RestrictPtrTraits>(),
+//                 ray_samples_packed.ray_fixed_dt.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
+//                 ray_samples_packed.rays_have_equal_nr_of_samples,
+//                 ray_samples_packed.fixed_nr_of_samples_per_ray,
+//                 ray_samples_packed.samples_z.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
+//                 ray_samples_packed.samples_dt.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
+//                 ray_samples_packed.samples_sdf.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
+//                 ray_samples_packed.has_sdf,
+//                 ray_samples_packed.samples_pos.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
+//                 ray_samples_packed.samples_dirs.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
+//                 //output
+//                 ray_samples_compressed.samples_pos.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
+//                 ray_samples_compressed.samples_dirs.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
+//                 ray_samples_compressed.samples_z.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
+//                 ray_samples_compressed.samples_dt.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
+//                 ray_samples_compressed.samples_sdf.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
+//                 ray_samples_compressed.ray_fixed_dt.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
+//                 ray_samples_compressed.ray_start_end_idx.packed_accessor32<int,2,torch::RestrictPtrTraits>(),
+//                 ray_samples_compressed.cur_nr_samples.packed_accessor32<int,1,torch::RestrictPtrTraits>()
+//             );
     
     
 
 
-    return ray_samples_compressed;
+//     return ray_samples_compressed;
 
-}
+// }
 
 
 
@@ -642,7 +642,7 @@ torch::Tensor VolumeRendering::cumprod_alpha2transmittance_backward(const torch:
 }
 
 
-std::tuple<torch::Tensor, torch::Tensor> VolumeRendering::integrate_rgb_and_weights_backward(const torch::Tensor& grad_pred_rgb, const RaySamplesPacked& ray_samples_packed, const torch::Tensor& rgb_samples, const torch::Tensor& weights_samples, const torch::Tensor& pred_rgb){
+std::tuple<torch::Tensor, torch::Tensor> VolumeRendering::integrate_with_weights_backward(const torch::Tensor& grad_pred_rgb, const RaySamplesPacked& ray_samples_packed, const torch::Tensor& rgb_samples, const torch::Tensor& weights_samples, const torch::Tensor& pred_rgb){
 
     int nr_rays=ray_samples_packed.ray_start_end_idx.size(0);
     int nr_samples_total=ray_samples_packed.samples_z.size(0);
@@ -658,7 +658,7 @@ std::tuple<torch::Tensor, torch::Tensor> VolumeRendering::integrate_rgb_and_weig
 
 
 
-    VolumeRenderingGPU::integrate_rgb_and_weights_backward_gpu<<<blocks, BLOCK_SIZE>>>(
+    VolumeRenderingGPU::integrate_with_weights_backward_gpu<<<blocks, BLOCK_SIZE>>>(
                 nr_rays,
                 ray_samples_packed.max_nr_samples, //useful for checking if the ray has samples higher the the max_nr_samples in which case we don't integrate
                 ray_samples_packed.ray_start_end_idx.packed_accessor32<int,2,torch::RestrictPtrTraits>(),

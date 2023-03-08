@@ -85,6 +85,9 @@ RaySamplesPacked RaySamplesPacked::compact_to_valid_samples(){
     int exact_nr_samples=this->compute_exact_nr_samples();
 
     RaySamplesPacked compact_ray_samples_packed(m_nr_rays, exact_nr_samples);
+    compact_ray_samples_packed.has_sdf=this->has_sdf;
+    compact_ray_samples_packed.rays_have_equal_nr_of_samples=this->rays_have_equal_nr_of_samples;
+    compact_ray_samples_packed.fixed_nr_of_samples_per_ray=this->fixed_nr_of_samples_per_ray;
 
     const dim3 blocks = { (unsigned int)div_round_up(m_nr_rays, BLOCK_SIZE), 1, 1 }; 
 

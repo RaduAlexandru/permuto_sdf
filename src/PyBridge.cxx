@@ -117,18 +117,18 @@ PYBIND11_MODULE(hash_sdf, m) {
     .def_static("volume_render_nerf", &VolumeRendering::volume_render_nerf ) 
     .def_static("compute_dt", &VolumeRendering::compute_dt ) 
     .def_static("cumprod_alpha2transmittance", &VolumeRendering::cumprod_alpha2transmittance ) 
-    .def_static("integrate_rgb_and_weights", &VolumeRendering::integrate_rgb_and_weights ) 
+    .def_static("integrate_with_weights", &VolumeRendering::integrate_with_weights ) 
     .def_static("sdf2alpha", &VolumeRendering::sdf2alpha ) 
     .def_static("sum_over_each_ray", &VolumeRendering::sum_over_each_ray ) 
     .def_static("cumsum_over_each_ray", &VolumeRendering::cumsum_over_each_ray ) 
     .def_static("compute_cdf", &VolumeRendering::compute_cdf )  
     .def_static("importance_sample", &VolumeRendering::importance_sample )  
     .def_static("combine_uniform_samples_with_imp", &VolumeRendering::combine_uniform_samples_with_imp )  
-    .def_static("compact_ray_samples", &VolumeRendering::compact_ray_samples )  
+    // .def_static("compact_ray_samples", &VolumeRendering::compact_ray_samples )  
     //backward passes
     .def_static("volume_render_nerf_backward", &VolumeRendering::volume_render_nerf_backward ) 
     .def_static("cumprod_alpha2transmittance_backward", &VolumeRendering::cumprod_alpha2transmittance_backward )  
-    .def_static("integrate_rgb_and_weights_backward", &VolumeRendering::integrate_rgb_and_weights_backward )  
+    .def_static("integrate_with_weights_backward", &VolumeRendering::integrate_with_weights_backward )  
     .def_static("sum_over_each_ray_backward", &VolumeRendering::sum_over_each_ray_backward )  
     ;
 
