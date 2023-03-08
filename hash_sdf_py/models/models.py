@@ -2984,8 +2984,8 @@ class RGB(torch.nn.Module):
 
 
         # self.pick_rand_rows= RandRowPicker()
-        self.pick_rand_pixels= RandPixelPicker(low_discrepancy=False) #do NOT use los discrepancy for now, it seems to align some of the rays to some directions so maybe it's not that good of an idea
-        self.pixel_sampler=PixelSampler()
+        # self.pick_rand_pixels= RandPixelPicker(low_discrepancy=False) #do NOT use los discrepancy for now, it seems to align some of the rays to some directions so maybe it's not that good of an idea
+        # self.pixel_sampler=PixelSampler()
         self.create_rays=CreateRaysModule()
 
         #create encoding
@@ -3001,7 +3001,7 @@ class RGB(torch.nn.Module):
        
 
         # with dirs encoded
-        self.mlp= nn.Sequential(
+        self.mlp= torch.nn.Sequential(
             torch.nn.Linear(self.encoding.output_dims() + 25 + 3 + geom_feat_size_in, 128),
             torch.nn.GELU(),
             torch.nn.Linear(128,128),

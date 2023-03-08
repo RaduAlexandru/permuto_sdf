@@ -19,6 +19,9 @@ from hash_sdf  import NGPGui
 from hash_sdf  import OccupancyGrid
 from hash_sdf  import Sphere
 from hash_sdf_py.models.models import SDF
+from hash_sdf_py.models.models import RGB
+from hash_sdf_py.models.models import NerfHash
+from hash_sdf_py.models.models import Colorcal
 from hash_sdf_py.utils.sdf_utils import sdf_loss
 from hash_sdf_py.utils.sdf_utils import sphere_trace
 from hash_sdf_py.utils.sdf_utils import filter_unconverged_points
@@ -28,15 +31,14 @@ from hash_sdf_py.utils.common_utils import tex2img
 from hash_sdf_py.utils.common_utils import colormap
 from hash_sdf_py.utils.common_utils import create_dataloader
 from hash_sdf_py.utils.common_utils import create_bb_for_dataset
+from hash_sdf_py.utils.common_utils import create_bb_mesh
 from hash_sdf_py.utils.hahsdf_utils import get_frames_cropped
+from hash_sdf_py.utils.hahsdf_utils import init_losses
+from hash_sdf_py.utils.hahsdf_utils import get_iter_for_anneal
+from hash_sdf_py.utils.hahsdf_utils import loss_sphere_init
 from hash_sdf_py.utils.aabb import AABB
 
-from hash_sdf_py.callbacks.callback import *
-from hash_sdf_py.callbacks.viewer_callback import *
-from hash_sdf_py.callbacks.visdom_callback import *
-from hash_sdf_py.callbacks.tensorboard_callback import *
-from hash_sdf_py.callbacks.state_callback import *
-from hash_sdf_py.callbacks.phase import *
+from hash_sdf_py.callbacks.callback_utils import *
 
 
 config_file="train_hashsdf.cfg"
@@ -49,7 +51,7 @@ config_path=os.path.join( os.path.dirname( os.path.realpath(__file__) ) , '../co
 # #initialize the parameters used for training
 train_params=TrainParams.create(config_path)    
 class HyperParams:
-    lr: 1e-3
+    lr= 1e-3
     nr_iter_sphere_fit=4000
     eikonal_weight=0.04
     curvature_weight=1300.0
@@ -68,6 +70,9 @@ class HyperParams:
     nr_rays=512
     sdf_geom_feat_size=32
     sdf_nr_iters_for_c2f=10000
+    rgb_nr_iters_for_c2f=1
+    background_nr_iters_for_c2f=1
+    target_nr_of_samples=512*(64+16+16)
 hyperparams=HyperParams()
 
 
@@ -536,7 +541,7 @@ def run_net_sphere_traced_batched(frame, chunk_size,   args, tensor_reel,  min_d
     return pred_rgb_img, pred_weights_sum_img, pred_normals_img, pred_depth_img, pred_features_img, pts_start, pts_end
 
 
-def train(args, config_path, hyperparams, loader_train, experiment_name, with_viewer, with_tensorboard, save_checkpoint, checkpoint_path, tensor_reel):
+def train(args, config_path, hyperparams, train_params, loader_train, experiment_name, with_viewer, checkpoint_path, tensor_reel):
 
 
     #train
@@ -549,557 +554,473 @@ def train(args, config_path, hyperparams, loader_train, experiment_name, with_vi
 
     if first_time and with_viewer:
         view.m_camera.from_string("-1.69051 0.499783 0.824015  -0.119454    -0.5118 -0.0721315 0.847683  0.0532509 -0.0668205 -0.0933657 60 0.0502494 5024.94")
-        # zoomint to eh base of the bear to see the error
-        # view.m_camera.from_string(" -0.380117 -0.0556938   0.167511  -0.105197  -0.426046 -0.0499672 0.897171  0.116958 -0.208198 -0.237689 60 0.0502494 5024.94")
-
     
-    aabb = create_bb_for_dataset(dataset_name)
+    aabb = create_bb_for_dataset(args.dataset)
     if with_viewer:
         bb_mesh = create_bb_mesh(aabb) 
         Scene.show(bb_mesh,"bb_mesh")
 
-
-    nr_rays_to_create = hyperparams.nr_rays
-    expected_samples_per_ray=hyperparams.nr_samples_per_ray
-    if hyperparams.do_imp_sampling:
-        expected_samples_per_ray+=hyperparams.nr_samples_imp_sampling*2 #we have 64 uniform samples and we run two importance samples
-    target_nr_of_samples=512*expected_samples_per_ray
-
-
-    cb=create_callbacks_simple(with_viewer, with_tensorboard, experiment_name)
+    cb=create_callbacks(with_viewer, train_params, experiment_name, config_path)
 
 
     #create phases
     phases= [
         Phase('train', loader_train, grad=True),
     ]
+    phase=phases[0] #we usually switch between training and eval phases but here we only train
+
     #model 
     model_sdf=SDF(in_channels=3, boundary_primitive=aabb, geom_feat_size_out=hyperparams.sdf_geom_feat_size, nr_iters_for_c2f=hyperparams.sdf_nr_iters_for_c2f).to("cuda")
-    # model_rgb=RGB(nr_lattice_vertices, nr_lattice_features, nr_resolutions=24, feat_size_in=32, nr_cams=loader_train.nr_samples() ).to("cuda")
-    model_sdf=RGB(in_channels=3, boundary_primitive=aabb, geom_feat_size_in=hyperparams.sdf_geom_feat_size, nr_iters_for_c2f=0).to("cuda")
-    model_bg=NerfHash(4, nr_lattice_vertices, nr_lattice_features, nr_resolutions=nr_resolutions, boundary_primitive=aabb, nr_samples_per_ray=nr_samples_bg, nr_iters_for_c2f=1 ).to("cuda")
-    model_colorcal=Colorcal(loader_train.nr_samples(), 0)
+    model_rgb=RGB(in_channels=3, boundary_primitive=aabb, geom_feat_size_in=hyperparams.sdf_geom_feat_size, nr_iters_for_c2f=hyperparams.rgb_nr_iters_for_c2f).to("cuda")
+    model_bg=NerfHash(4, boundary_primitive=aabb, nr_iters_for_c2f=hyperparams.background_nr_iters_for_c2f ).to("cuda") 
     occupancy_grid=OccupancyGrid(256, 1.0, [0,0,0])
-    # occupancy_grid=OccupancyGrid(128, 1.0, [0,0,0])
-    use_occupancy_grid=True
-    use_curvature_normal_based=True
-    do_imp_sampling=True
-    use_colorcal=True
-    if not use_colorcal:
+    if hyperparams.use_color_calibration:
+        model_colorcal=Colorcal(loader_train.nr_samples(), 0)
+    else:
         model_colorcal=None
+    model_sdf.train(phase.grad)
+    model_rgb.train(phase.grad)
+    model_bg.train(phase.grad)
+    
 
-
+    params = list(model_sdf.parameters()) + list(model_rgb.parameters()) + list(model_bg.parameters()) 
+    if model_colorcal is not None:
+        params+= list(model_colorcal.parameters()) 
+    optimizer = torch.optim.AdamW (params, amsgrad=False,  betas=(0.9, 0.99), eps=1e-15, lr=hyperparams.lr)
 
 
 
     first_time_getting_control=True
-    run_test=True
-
-    iter_finish_curv=iter_start_curv+1001
-    forced_variance_finish_iter=35000
-    min_dist_between_samples=0.0001
-    max_nr_samples_per_ray=64
-    # lipshitz_w=1e-5
-
-
     is_in_training_loop=True
-
-    #for reprojection
-    nr_samples_per_ray_last_iter=None
-
-
+    nr_rays_to_create=hyperparams.nr_rays
+   
     while is_in_training_loop:
+        model_sdf.train(phase.grad)
+        model_rgb.train(phase.grad)
+        model_bg.train(phase.grad)
+        loss=0 
 
-        for phase in phases:
-            cb.epoch_started(phase=phase)
-            cb.phase_started(phase=phase)
+        cb.before_forward_pass()
 
-            while ( phase.samples_processed_this_epoch< phase.loader.nr_samples() ): #we assume we have the data
-                if True: 
-                    is_training = phase.grad
-                    model.train(phase.grad)
-                    model_rgb.train(phase.grad)
-                    model_bg.train(phase.grad)
+        loss, loss_rgb, loss_eikonal, loss_curvature=init_losses() 
 
+        iter_nr_for_anneal=get_iter_for_anneal(phases[0].iter_nr, hyperparams.nr_iter_sphere_fit)
+        in_process_of_sphere_init=phases[0].iter_nr<hyperparams.nr_iter_sphere_fit
+        just_finished_sphere_fit=phases[0].iter_nr==hyperparams.nr_iter_sphere_fit
 
-                    # #forward
-                    with torch.set_grad_enabled(is_training):
-                        cb.before_forward_pass() #sets the appropriate sigma for the lattice
+        if in_process_of_sphere_init:
+            loss, loss_sdf, loss_eikonal= loss_sphere_init(args.dataset, 30000, aabb, model_sdf, iter_nr_for_anneal )
+        else:
+            with torch.set_grad_enabled(False):
+                #update occupancy
+                if phase.iter_nr%8==0 and hyperparams.use_occupancy_grid:
+                    grid_centers_random, grid_center_indices=occupancy_grid.compute_random_sample_of_grid_points(256*256*4,True)
+                    sdf_grid,_=model_sdf( grid_centers_random, iter_nr_for_anneal) 
+                    occupancy_grid.update_with_sdf_random_sample(grid_center_indices, sdf_grid, inv_s.view(-1)[0].item(), max_eikonal_abs, 1e-4 )
+                    #adjust nr_rays_to_create based on how many samples we have in total
+                    cur_nr_samples=pts.shape[0]
+                    multiplier_nr_samples=float(target_nr_of_samples)/cur_nr_samples
+                    nr_rays_to_create=int(nr_rays_to_create*multiplier_nr_samples)
 
-                        # print("\n phase.iter_nr",  phase.iter_nr, "phase grad is ", phase.grad)
+                cos_anneal_ratio=map_range_val(iter_nr_for_anneal, 0.0, forced_variance_finish_iter, 0.0, 1.0)
+                forced_variance=map_range_val(iter_nr_for_anneal, 0.0, forced_variance_finish_iter*1, 0.3, 0.8)
 
-                        loss, loss_rgb, loss_eikonal, loss_curvature=init_losses() 
-
-                        iter_nr_for_anneal=get_iter_for_anneal(phases[0].iter_nr, args.nr_iter_sphere_fit)
-                        in_process_of_sphere_init=phases[0].iter_nr<args.nr_iter_sphere_fit
-                        just_finished_sphere_fit=phases[0].iter_nr==args.nr_iter_sphere_fit
-
-
-                        if in_process_of_sphere_init:
-                            loss, loss_sdf, loss_eikonal= loss_sphere_init(dataset_name, 30000, aabb, model, lattice, iter_nr_for_anneal, use_only_dense_grid=False )
-                            # exit(1)
-                        else:
-
-                            with torch.set_grad_enabled(False):
-
-                                cos_anneal_ratio=map_range_val(iter_nr_for_anneal, 0.0, forced_variance_finish_iter, 0.0, 1.0)
-                                forced_variance=map_range_val(iter_nr_for_anneal, 0.0, forced_variance_finish_iter*1, 0.3, 0.8)
-
-                                ray_origins, ray_dirs, gt_selected, gt_mask_selected, img_indices=InstantNGP.random_rays_from_reel(tensor_reel, nr_rays_to_create)
-                                
-                                nr_rays_cur_iter=nr_rays_to_create
-
-                                #for this pred_depth, get some of the points in 3D, project them in random images and use those to get new rays
-                                do_reprojection=False
-                                nr_rays_reprojected=128
-                                if do_reprojection and nr_samples_per_ray_last_iter is not None:
-                                    #get the depths for the rays that have more than 2 samples
-                                    # pred_depth_rand_indices= torch.randint(pred_depth.shape[0])
-                                    enough_samples=nr_samples_per_ray_last_iter>2#we expect more or less 512 rays to have enough samples
-                                    # enough_depth=pred_depth>0.1
-                                    # select_mask=torch.logical_and(enough_samples, enough_depth)
-                                    select_mask=enough_samples
-                                    pred_depth_selected=pred_depth_last_iter[select_mask]
-                                    nr_rays_for_reprojection=pred_depth_selected.shape[0]
-                                    pred_depth_selected=pred_depth_selected.view(nr_rays_for_reprojection,1)
-                                    ray_origins_selected=ray_origins_last_iter[select_mask.repeat(1,3)].view(nr_rays_for_reprojection,3)
-                                    ray_dirs_selected=ray_dirs_last_iter[select_mask.repeat(1,3)].view(nr_rays_for_reprojection,3)
-                                    #sicne the rays are randomly selected, we can get the first X of them and this gives us a random sample of them
-                                    pred_depth_selected=pred_depth_selected[0:nr_rays_reprojected, :]
-                                    ray_origins_selected=ray_origins_selected[0:nr_rays_reprojected, :]
-                                    ray_dirs_selected=ray_dirs_selected[0:nr_rays_reprojected, :]
-
-                                    #debug get pts
-                                    # print("ray_origins_selected",ray_origins_selected.shape)
-                                    # print("ray_dirs_selected",ray_dirs_selected.shape)
-                                    # print("pred_depth_selected",pred_depth_selected.shape)
-                                    points_reprojected=ray_origins_selected + ray_dirs_selected*pred_depth_selected
-                                    #debug just make the points a constant
-                                    # points_reprojected=points_reprojected*0
-                                    # points_reprojected+=0.2
-                                    show_points(points_reprojected,"points_reprojected")
-
-                                    ray_origins_new, ray_dirs_new, gt_selected_new, gt_mask_selected_new, img_indices_new =InstantNGP.rays_from_reprojection_reel(tensor_reel, points_reprojected)
-                                    # print("ray_origins_new",ray_origins_new)
-
-                                    #debug make a sampler from these rays and check that it passes through the point
-                                    # sampler=NerfUniformSampler(aabb,32)
-                                    # ray_points_entry_new, ray_t_entry_new, ray_points_exit_new, ray_t_exit_new, _=aabb.ray_intersection(ray_origins_new, ray_dirs_new)
-                                    # z_vals_debug, _=sampler.get_z_vals(ray_origins_new, ray_dirs_new, ray_t_exit_new, model, lattice, phase.iter_nr)
-                                    # ray_samples = ray_origins_new.unsqueeze(1) + z_vals_debug.unsqueeze(2) * ray_dirs_new.unsqueeze(1)
-                                    # show_points(ray_samples,"ray_samples")
-
-                                    # print("ray_origins previous", ray_origins.shape)
-                                    # print("ray_origins_new", ray_origins_new.shape)
-
-                                    #concat with the other rays from reel
-                                    ray_origins=torch.cat([ray_origins,ray_origins_new],0)
-                                    ray_dirs=torch.cat([ray_dirs,ray_dirs_new],0)
-                                    gt_selected=torch.cat([gt_selected,gt_selected_new],0)
-                                    gt_mask_selected=torch.cat([gt_mask_selected, gt_mask_selected_new],0)
-                                    img_indices=torch.cat([img_indices, img_indices_new],0)
-
-                                    # print("ray_origins after", ray_origins.shape)
-                                    # print("nr_rays_cur_iter_ vefore",nr_rays_cur_iter)
-
-                                    nr_rays_cur_iter+=nr_rays_reprojected
-
-                                    # print("nr_rays_cur_iter after",nr_rays_cur_iter)
+                ray_origins, ray_dirs, gt_selected, gt_mask, img_indices=HashSDF.random_rays_from_reel(tensor_reel, nr_rays_to_create) 
+                ray_points_entry, ray_t_entry, ray_points_exit, ray_t_exit, does_ray_intersect_box=aabb.ray_intersection(ray_origins, ray_dirs)
 
 
+            # pred_rgb, pts, sdf, sdf_gradients, weights, weights_sum, inv_s, pred_normals, pred_depth, nr_samples_per_ray, pred_features=run_net(args, tensor_reel, nr_rays_cur_iter, ray_origins, ray_dirs, img_indices, min_dist_between_samples, max_nr_samples_per_ray, model, model_rgb, model_bg, model_colorcal, lattice, lattice_bg, iter_nr_for_anneal, aabb,  cos_anneal_ratio, forced_variance, nr_samples_bg, use_occupancy_grid, occupancy_grid, do_imp_sampling)
 
-                                ray_points_entry, ray_t_entry, ray_points_exit, ray_t_exit, does_ray_intersect_box=aabb.ray_intersection(ray_origins, ray_dirs)
+            pred_rgb, sdf_gradients, weights_sum, samples_pos_fg  =run_net(args, tensor_reel, hyperparams, ray_origins, ray_dirs, img_indices, model_sdf, model_rgb, model_bg, model_colorcal, occupancy_grid, iter_nr_for_anneal,  cos_anneal_ratio, forced_variance)
 
-                            pred_rgb, pts, sdf, sdf_gradients, weights, weights_sum, inv_s, pred_normals, pred_depth, nr_samples_per_ray, pred_features=run_net(args, tensor_reel, nr_rays_cur_iter, ray_origins, ray_dirs, img_indices, min_dist_between_samples, max_nr_samples_per_ray, model, model_rgb, model_bg, model_colorcal, lattice, lattice_bg, iter_nr_for_anneal, aabb,  cos_anneal_ratio, forced_variance, nr_samples_bg, use_occupancy_grid, occupancy_grid, do_imp_sampling)
+            #adjust nr_rays_to_create based on how many samples we have in total
+            cur_nr_samples=samples_pos_fg.shape[0]
+            multiplier_nr_samples=float(target_nr_of_samples)/cur_nr_samples
+            nr_rays_to_create=int(nr_rays_to_create*multiplier_nr_samples)
 
-                            #save some things
-                            pred_depth_last_iter=pred_depth.detach()
-                            nr_samples_per_ray_last_iter=nr_samples_per_ray.detach()
-                            ray_origins_last_iter=ray_origins.detach()
-                            ray_dirs_last_iter=ray_dirs.detach()
+            
+            #losses 
+            #rgb loss
+            loss_rgb=rgb_loss(gt_selected, pred_rgb, does_ray_intersect_box)
+            loss+=loss_rgb
 
-                            
-                            
-                            
+            #eikonal loss
+            loss_eikonal =eikonal_loss(sdf_gradients)
+            loss+=loss_eikonal*args.eik_w 
 
+            loss_curvature=torch.tensor(0)
+            global_weight_curvature=map_range_val(iter_nr_for_anneal, iter_start_curv, iter_finish_curv, 1.0, 0.000) #once we are converged onto good geometry we can safely descrease it's weight so we learn also high frequency detail geometry.
+            if global_weight_curvature>0.0:
+                sdf2, sdf_curvature, feat2=model.get_sdf_and_curvature_1d_precomputed_gradient_normal_based( pts, sdf_gradients, lattice, iter_nr_for_anneal)
+                loss_curvature=(torch.clamp(sdf_curvature,max=0.5).abs().view(-1)   ).mean()
+                loss+=loss_curvature* args.curv_w*1e-3 *global_weight_curvature
 
-                            if phase.iter_nr%8==0 and use_occupancy_grid:
-                                with torch.set_grad_enabled(False):
-                                    grid_centers_random, grid_center_indices=occupancy_grid.compute_random_sample_of_grid_points(256*256*4,True)
-                                    sdf_grid,_,_=model( grid_centers_random, lattice, iter_nr_for_anneal, False) 
-                                    grad_norm=torch.linalg.norm(sdf_gradients.detach().reshape(-1, 3), ord=2, dim=-1)
-                                    max_eikonal_abs= (grad_norm - 1.0).abs().max()
-                                    # print("inv_s",inv_s)
-                                    occupancy_thresh=1e-4
-                                    occupancy_grid.update_with_sdf_random_sample(grid_center_indices, sdf_grid, inv_s.view(-1)[0].item(), max_eikonal_abs, occupancy_thresh )
-                                    #adjust nr_rays_to_create based on how many samples we have in total
-                                    # cur_nr_samples=ray_samples_packed.samples_pos.shape[0]
-                                    cur_nr_samples=pts.shape[0]
-                                    multiplier_nr_samples=float(target_nr_of_samples)/cur_nr_samples
-                                    nr_rays_to_create=int(nr_rays_to_create*multiplier_nr_samples)
-                                    
+            #highsdf just to avoice voxels becoming "occcupied" due to their sdf dropping to zero
+            offsurface_points=aabb_big.rand_points_inside(nr_points=1024)
+            sdf_rand, _, _=model( offsurface_points, lattice, iter_nr_for_anneal, use_only_dense_grid=False)
+            loss_offsurface_high_sdf=torch.exp(-1e2 * torch.abs(sdf_rand)).mean()
+            loss+=loss_offsurface_high_sdf*1e-3
 
+            #loss on lipshitz
+            # loss_lipthitz=1
+            # for i in range(len(model_rgb.mlp.layers)):
+            #     loss_lipthitz=loss_lipthitz*torch.nn.functional.softplus(model_rgb.mlp.lipshitz_bound_per_layer[i])
+            # if with_tensorboard:
+            #     cb["tensorboard_callback"].tensorboard_writer.add_scalar('instant_ngp_2/' + phase.name + '/loss_lipthitz', loss_lipthitz.item(), phase.iter_nr)
+            # if iter_nr_for_anneal>=iter_start_curv:
+            #     loss+=loss_lipthitz.mean()*lipshitz_w
 
-                            #rgb loss
-                            loss_rgb=rgb_loss(gt_selected, pred_rgb, does_ray_intersect_box)
-                            loss+=loss_rgb
-
-                            #eikonal loss
-                            loss_eikonal =eikonal_loss(sdf_gradients)
-                            loss+=loss_eikonal*args.eik_w #10 here and 30 in the curvatures makes the dog looks ncie but loses paws
-
-
-
-                            #loss on curvature
-                            use_loss_curvature=True
-                            loss_curvature=torch.tensor(0)
-                            global_weight_curvature=map_range_val(iter_nr_for_anneal, iter_start_curv, iter_finish_curv, 1.0, 0.000) #once we are converged onto good geometry we can safely descrease it's weight so we learn also high frequency detail geometry.
-                            if use_loss_curvature and global_weight_curvature>0.0:
-                                if not use_curvature_normal_based:
-                                    sdf2, sdf_curvature, feat2, _=model.get_sdf_and_curvature_1d_precomputed_gradient( pts, sdf, sdf_gradients, lattice, iter_nr_for_anneal, use_only_dense_grid=False)
-                                else:
-                                    sdf2, sdf_curvature, feat2=model.get_sdf_and_curvature_1d_precomputed_gradient_normal_based( pts, sdf_gradients, lattice, iter_nr_for_anneal)
-                                # sdf_curvature=sdf_curvature.view(nr_rays, -1)
-                                
-                                # loss_curvature=(sdf_curvature.abs() *weights.view(nr_rays,-1).detach()  ) 
-                                # if not use_occupancy_grid:
-                                    # loss_curvature=(sdf_curvature.abs().view(-1) *weights.view(-1).detach()  ) 
-                                # else:
-                                #We also need to multiply with the weights here because we don't want to supervize the curvature of surfaces that are behing the ones that we are actually seeing.
-                                # loss_curvature=(sdf_curvature.abs().view(-1) *weights.view(-1).detach()  ) 
-                                # loss_curvature=(sdf_curvature.abs().view(-1)   )
-                                loss_curvature=(torch.clamp(sdf_curvature,max=0.5).abs().view(-1)   )
-                                # loss_curvature=robust_loss_pytorch.general.lossfun(loss_curvature, alpha=torch.tensor(-2.0), scale=torch.tensor(0.1))
-                                # loss_curvature=robust_loss_pytorch.general.lossfun( torch.clamp(loss_curvature, min=1e-6), alpha=torch.tensor(-2.0), scale=torch.tensor(0.1))
-                                # loss_curvature=loss_curvature*1e3 #we increase the values a bit because afterwards we downweight with the weights and it seems to risk going below 1e-6 so it has numerical issues
-                                # loss_curvature=(loss_curvature.view(-1) *weights.view(-1).detach()  ) 
-                                # loss_curvature=(sdf_curvature.abs().view(-1)   )  #if we use occupancy and multiply weight weight, we start with low W for the curvature a the surface and increase it later but by then it's already too late to recover from the shitty curvature we have now
-                                loss_curvature=loss_curvature.mean()
-                                loss+=loss_curvature* args.curv_w*1e-3 *global_weight_curvature #THIS should maybe promote the curvature tangential to the normal because in the direction of the normal it just promotes a constant sdf
+            if args.with_mask:
+                loss_mask=torch.nn.functional.binary_cross_entropy(weights_sum.clip(1e-3, 1.0 - 1e-3), gt_mask_selected)
+                loss+=loss_mask*0.1 
 
 
-
-                            #highsdf just to avoice voxels becoming "occcupied" due to their sdf dropping to zero
-                            offsurface_points=aabb_big.rand_points_inside(nr_points=1024)
-                            sdf_rand, _, _=model( offsurface_points, lattice, iter_nr_for_anneal, use_only_dense_grid=False)
-                            loss_offsurface_high_sdf=torch.exp(-1e2 * torch.abs(sdf_rand)).mean()
-                            loss+=loss_offsurface_high_sdf*1e-3
-
-                            #loss on lipshitz
-                            # loss_lipthitz=1
-                            # for i in range(len(model_rgb.mlp.layers)):
-                            #     loss_lipthitz=loss_lipthitz*torch.nn.functional.softplus(model_rgb.mlp.lipshitz_bound_per_layer[i])
-                            # if with_tensorboard:
-                            #     cb["tensorboard_callback"].tensorboard_writer.add_scalar('instant_ngp_2/' + phase.name + '/loss_lipthitz', loss_lipthitz.item(), phase.iter_nr)
-                            # if iter_nr_for_anneal>=iter_start_curv:
-                            #     loss+=loss_lipthitz.mean()*lipshitz_w
+        cb.after_forward_pass(loss=loss.item(), loss_rgb=loss_rgb, loss_sdf_surface_area=0, loss_sdf_grad=0, phase=phase, loss_eikonal=loss_eikonal.item(), loss_curvature=loss_curvature.item(), lr=optimizer.param_groups[0]["lr"]) #visualizes the prediction 
 
 
-                            if use_mask_loss:
-                                # weights_sum=torch.sum(weights.unsqueeze(-1) , 1)
-                                # print("weights_sum min max is ", weights_sum.min(), weights_sum.max())
-                                loss_mask=torch.nn.functional.binary_cross_entropy(weights_sum.clip(1e-3, 1.0 - 1e-3), gt_mask_selected)
-                                loss+=loss_mask*0.1 #0.1 works fine for getting the drill bit of the scissors dataset, anything lower is worse
+        #backward
+        optimizer.zero_grad()
+        cb.before_backward_pass()
+        loss.backward()
+        cb.after_backward_pass()
+        optimizer.step()
 
 
+        ###visualize
+        if with_viewer and phase.iter_nr%300==0 or phase.iter_nr==1 or ngp_gui.m_control_view:
+            with torch.set_grad_enabled(False):
+                model_sdf.eval()
+                model_rgb.eval()
+                model_bg.eval()
 
-                            if torch.isnan(loss).any():
-                                print("detected nan in loss at iter", phase.iter_nr)
-                                exit()
-                            
+
+                vis_width=500
+                vis_height=500
+                if first_time_getting_control or ngp_gui.m_control_view:
+                    first_time_getting_control=False
+                    frame=Frame()
+                    frame.from_camera(view.m_camera, vis_width, vis_height)
+                    frustum_mesh=frame.create_frustum_mesh(0.1)
+                    Scene.show(frustum_mesh,"frustum_mesh_vis")
+
+                #forward all the pixels
+                ray_origins, ray_dirs=create_rays_from_frame(frame, rand_indices=None) # ray origins and dirs as nr_pixels x 3
+                
+
+                #sphere trace those pixels
+                ray_end, ray_end_sdf, ray_end_gradient, ray_end_t=sphere_trace(10, ray_origins, ray_dirs, model_sdf, return_gradients=True, sdf_multiplier=1.0, sdf_converged_tresh=0.005)
+                ray_end_converged, ray_end_gradient_converged, is_converged=filter_unconverged_points(ray_end, ray_end_sdf, ray_end_gradient) #leaves only the points that are converged
+                ray_end_normal=F.normalize(ray_end_gradient, dim=1)
+                ray_end_normal_vis=(ray_end_normal+1.0)*0.5
+                show_points(ray_end, "ray_end", color_per_vert=ray_end_normal_vis, normal_per_vert=ray_end_normal)
+                ray_end_normal=F.normalize(ray_end_gradient_converged, dim=1)
+                ray_end_normal_vis=(ray_end_normal+1.0)*0.5
+                ray_end_normal_tex=ray_end_normal_vis.view(vis_height, vis_width, 3)
+                ray_end_normal_img=tex2img(ray_end_normal_tex)
+                Gui.show(tensor2mat(ray_end_normal_img), "ray_end_normal_img")
+
+
+        if with_viewer:
+            view.update()
+      
+
+                   
+
+
+                  
                         
 
 
 
-                        #if its the first time we do a forward on the model we need to create here the optimizer because only now are all the tensors in the model instantiated
-                        # if first_time or just_finished_sphere_fit or iter_nr_for_anneal==iter_start_curv:
-                        if first_time or just_finished_sphere_fit:
-                        # if first_time:
-                            first_time=False
+                    #     #if its the first time we do a forward on the model we need to create here the optimizer because only now are all the tensors in the model instantiated
+                    #     # if first_time or just_finished_sphere_fit or iter_nr_for_anneal==iter_start_curv:
+                    #     if first_time or just_finished_sphere_fit:
+                    #     # if first_time:
+                    #         first_time=False
 
                            
 
-                            params=[]
-                            model_params_without_lattice=[]
-                            for name, param in model.named_parameters():
-                                if "lattice_values" in name:
-                                    pass
-                                else:
-                                    model_params_without_lattice.append(param)
-                            model_rgb_params_without_lattice=[]
-                            for name, param in model_rgb.named_parameters():
-                                if "lattice_values" in name:
-                                    pass
-                                else:
-                                    model_rgb_params_without_lattice.append(param)
+                    #         params=[]
+                    #         model_params_without_lattice=[]
+                    #         for name, param in model.named_parameters():
+                    #             if "lattice_values" in name:
+                    #                 pass
+                    #             else:
+                    #                 model_params_without_lattice.append(param)
+                    #         model_rgb_params_without_lattice=[]
+                    #         for name, param in model_rgb.named_parameters():
+                    #             if "lattice_values" in name:
+                    #                 pass
+                    #             else:
+                    #                 model_rgb_params_without_lattice.append(param)
 
 
-                            # params.append( {'params': model.parameters(), 'weight_decay': 1e-6, 'lr': lr, 'name': "model_sdf" } )
-                            # params.append( {'params': model.parameters(), 'weight_decay': 0.0, 'lr': lr, 'name': "model_sdf" } )
-                            params.append( {'params': model_params_without_lattice, 'weight_decay': 0.0, 'lr': lr, 'name': "model_sdf_without_lattice"} )
-                            params.append( {'params': model.lattice_values_monolithic, 'weight_decay': 0.0, 'lr': lr, 'name': "model_sdf_lattice_values"} )
+                    #         # params.append( {'params': model.parameters(), 'weight_decay': 1e-6, 'lr': lr, 'name': "model_sdf" } )
+                    #         # params.append( {'params': model.parameters(), 'weight_decay': 0.0, 'lr': lr, 'name': "model_sdf" } )
+                    #         params.append( {'params': model_params_without_lattice, 'weight_decay': 0.0, 'lr': lr, 'name': "model_sdf_without_lattice"} )
+                    #         params.append( {'params': model.lattice_values_monolithic, 'weight_decay': 0.0, 'lr': lr, 'name': "model_sdf_lattice_values"} )
 
                             
-                            # if iter_nr_for_anneal==iter_start_curv:
-                            #     params.append( {'params': model_rgb_params_without_lattice, 'weight_decay': 0.1, 'lr': lr, 'name': "model_rgb_without_lattice"} )
-                            #     params.append( {'params': model_rgb.lattice_values_monolithic, 'weight_decay': 1.0, 'lr': lr, 'name': "model_rgb_lattice_values"} )
-                            # else:
-                            params.append( {'params': model_rgb_params_without_lattice, 'weight_decay': 0.0, 'lr': lr, 'name': "model_rgb_without_lattice"} )
-                            params.append( {'params': model_rgb.lattice_values_monolithic, 'weight_decay': 0.0, 'lr': lr, 'name': "model_rgb_lattice_values"} )
+                    #         # if iter_nr_for_anneal==iter_start_curv:
+                    #         #     params.append( {'params': model_rgb_params_without_lattice, 'weight_decay': 0.1, 'lr': lr, 'name': "model_rgb_without_lattice"} )
+                    #         #     params.append( {'params': model_rgb.lattice_values_monolithic, 'weight_decay': 1.0, 'lr': lr, 'name': "model_rgb_lattice_values"} )
+                    #         # else:
+                    #         params.append( {'params': model_rgb_params_without_lattice, 'weight_decay': 0.0, 'lr': lr, 'name': "model_rgb_without_lattice"} )
+                    #         params.append( {'params': model_rgb.lattice_values_monolithic, 'weight_decay': 0.0, 'lr': lr, 'name': "model_rgb_lattice_values"} )
 
-                            params.append( {'params': model_bg.parameters(), 'weight_decay': 0.0, 'lr': lr, 'name': "model_bg" } )
-                            if model_colorcal is not None:
-                                params.append( {'params': model_colorcal.parameters(), 'weight_decay': 1e-1, 'lr': lr, 'name': "model_colorcal" } )
-                            # optimizer = torch.optim.AdamW (params, amsgrad=False,  betas=(0.9, 0.99), eps=1e-15) #params from instantngp
-                            # optimizer = torch.optim.AdamW (params, amsgrad=False)  #no shingles
-                            # optimizer = LazyAdam(params, betas=(0.9, 0.99), eps=1e-15) #seems to be a bit faster than adam at the beggining
-                            # optimizer = RAdam(params, betas=(0.9, 0.99), eps=1e-15) #makes it slightly "noiser" with more curvature but solves the waviness
-                            optimizer=apex.optimizers.FusedAdam(params, adam_w_mode=True, betas=(0.9, 0.99), eps=1e-15)
-                            # optimizer=Adan(params, eps=1e-15)
-                            # optimizer = RAdam(params) 
-                            # optimizer = Adan (params)  #no shingles
-                            # optimizer = torch.optim.Adamax (params)
-                            # optimizer = torch.optim.Adamax (params, betas=(0.9, 0.99), eps=1e-15)
-                            # scheduler = torch.optim.LinearLR(optimizer, start_factor=1.0, end_factor=0.0, total_iters=20000)
-                            # scheduler_lr_decay=torch.optim.lr_scheduler.StepLR(optimizer,step_size=5000, gamma=0.1)
-                            # scheduler_lr_decay=LinearLR(optimizer, start_factor=1.0, end_factor=0.1, total_iters=100000)
-                            # scheduler_lr_decay=LinearLR(optimizer, start_factor=1.0, end_factor=0.1, total_iters=forced_variance_finish_iter*2)
-                            # scheduler_lr_decay= MultiStepLR(optimizer, milestones=[40000,80000,100000], gamma=0.3, verbose=False)
-                            scheduler_lr_decay= MultiStepLR(optimizer, milestones=lr_milestones, gamma=0.3, verbose=False)
-                            # scheduler_lr_decay= torch.optim.lr_scheduler.ExponentialLR(optimizer,)
-                            scheduler_warmup=None
-                            if just_finished_sphere_fit:
-                                scheduler_warmup = GradualWarmupScheduler(optimizer, multiplier=1, total_epoch=3000, after_scheduler=scheduler_lr_decay) #anneal over total_epoch iterations
+                    #         params.append( {'params': model_bg.parameters(), 'weight_decay': 0.0, 'lr': lr, 'name': "model_bg" } )
+                    #         if model_colorcal is not None:
+                    #             params.append( {'params': model_colorcal.parameters(), 'weight_decay': 1e-1, 'lr': lr, 'name': "model_colorcal" } )
+                    #         # optimizer = torch.optim.AdamW (params, amsgrad=False,  betas=(0.9, 0.99), eps=1e-15) #params from instantngp
+                    #         # optimizer = torch.optim.AdamW (params, amsgrad=False)  #no shingles
+                    #         # optimizer = LazyAdam(params, betas=(0.9, 0.99), eps=1e-15) #seems to be a bit faster than adam at the beggining
+                    #         # optimizer = RAdam(params, betas=(0.9, 0.99), eps=1e-15) #makes it slightly "noiser" with more curvature but solves the waviness
+                    #         optimizer=apex.optimizers.FusedAdam(params, adam_w_mode=True, betas=(0.9, 0.99), eps=1e-15)
+                    #         # optimizer=Adan(params, eps=1e-15)
+                    #         # optimizer = RAdam(params) 
+                    #         # optimizer = Adan (params)  #no shingles
+                    #         # optimizer = torch.optim.Adamax (params)
+                    #         # optimizer = torch.optim.Adamax (params, betas=(0.9, 0.99), eps=1e-15)
+                    #         # scheduler = torch.optim.LinearLR(optimizer, start_factor=1.0, end_factor=0.0, total_iters=20000)
+                    #         # scheduler_lr_decay=torch.optim.lr_scheduler.StepLR(optimizer,step_size=5000, gamma=0.1)
+                    #         # scheduler_lr_decay=LinearLR(optimizer, start_factor=1.0, end_factor=0.1, total_iters=100000)
+                    #         # scheduler_lr_decay=LinearLR(optimizer, start_factor=1.0, end_factor=0.1, total_iters=forced_variance_finish_iter*2)
+                    #         # scheduler_lr_decay= MultiStepLR(optimizer, milestones=[40000,80000,100000], gamma=0.3, verbose=False)
+                    #         scheduler_lr_decay= MultiStepLR(optimizer, milestones=lr_milestones, gamma=0.3, verbose=False)
+                    #         # scheduler_lr_decay= torch.optim.lr_scheduler.ExponentialLR(optimizer,)
+                    #         scheduler_warmup=None
+                    #         if just_finished_sphere_fit:
+                    #             scheduler_warmup = GradualWarmupScheduler(optimizer, multiplier=1, total_epoch=3000, after_scheduler=scheduler_lr_decay) #anneal over total_epoch iterations
 
-                            # if load_chkpt:
-                                # optimizer.load_state_dict(torch.load(os.path.join(ckpt_path,"optimizer.pt"))  )
-                                ##HACK , we know that the worm up has finished so we just set it to None
-                                # scheduler_warmup=None
+                    #         # if load_chkpt:
+                    #             # optimizer.load_state_dict(torch.load(os.path.join(ckpt_path,"optimizer.pt"))  )
+                    #             ##HACK , we know that the worm up has finished so we just set it to None
+                    #             # scheduler_warmup=None
                                 
 
-                            scaler = GradScaler()
+                    #         scaler = GradScaler()
 
-                        # loss=loss*1e-5
+                    #     # loss=loss*1e-5
 
-                        cb.after_forward_pass(loss=loss.item(), loss_rgb=loss_rgb, loss_sdf_surface_area=0, loss_sdf_grad=0, phase=phase, loss_eikonal=loss_eikonal.item(), loss_curvature=loss_curvature.item(), neus_variance_mean=model.volume_renderer.deviation_network.get_variance_item(), lr=optimizer.param_groups[0]["lr"]) #visualizes the prediction 
-                        # cb.after_forward_pass(loss=loss.item(), loss_rgb=loss_rgb_l1, loss_sdf_surface_area=0, loss_sdf_grad=0, phase=phase, gradient_error=gradient_error, loss_curvature=loss_curvature.item(), neus_variance_mean=0, lr=optimizer.param_groups[0]["lr"]) #visualizes the prediction 
-                        # print("lr ", optimizer.param_groups[0]["lr"])
+                    #     cb.after_forward_pass(loss=loss.item(), loss_rgb=loss_rgb, loss_sdf_surface_area=0, loss_sdf_grad=0, phase=phase, loss_eikonal=loss_eikonal.item(), loss_curvature=loss_curvature.item(), neus_variance_mean=model.volume_renderer.deviation_network.get_variance_item(), lr=optimizer.param_groups[0]["lr"]) #visualizes the prediction 
+                    #     # cb.after_forward_pass(loss=loss.item(), loss_rgb=loss_rgb_l1, loss_sdf_surface_area=0, loss_sdf_grad=0, phase=phase, gradient_error=gradient_error, loss_curvature=loss_curvature.item(), neus_variance_mean=0, lr=optimizer.param_groups[0]["lr"]) #visualizes the prediction 
+                    #     # print("lr ", optimizer.param_groups[0]["lr"])
 
-                        #update gui
-                        if with_viewer:
-                            # prev_c2f_progress=ngp_gui.m_c2f_progress
-                            ngp_gui.m_c2f_progress=model.c2f.get_last_t()
-                            # print("last t is ", model.c2f.get_last_t())
-                            # print("prev_c2f_progress",prev_c2f_progress)
-                            # diff=abs(model.c2f.get_last_t()-prev_c2f_progress)
-                            # if( diff>0.1 and diff!=0.3 ):
-                            #     print("wtf why did we have such a big jump")
-                            #     exit(1)
+                    #     #update gui
+                    #     if with_viewer:
+                    #         # prev_c2f_progress=ngp_gui.m_c2f_progress
+                    #         ngp_gui.m_c2f_progress=model.c2f.get_last_t()
+                    #         # print("last t is ", model.c2f.get_last_t())
+                    #         # print("prev_c2f_progress",prev_c2f_progress)
+                    #         # diff=abs(model.c2f.get_last_t()-prev_c2f_progress)
+                    #         # if( diff>0.1 and diff!=0.3 ):
+                    #         #     print("wtf why did we have such a big jump")
+                    #         #     exit(1)
 
 
 
-                    #backward
-                    if is_training:
+                    # #backward
+                    # if is_training:
                         
                         
-                        #at some point we increase the WD for the model_rgb
-                        if iter_nr_for_anneal>=iter_start_curv:
-                            for group in optimizer.param_groups:
-                                if group["name"]=="model_rgb_without_lattice":
-                                    #helps to get detail but a very high value causes the model_sdf.lattice values to get higher and higher to compensate. when they get too high the mish activation overflows due to the internal exp
-                                    #a value of 0.1 seems to cause overflow
-                                    group["weight_decay"]=0.1
-                                    # group["weight_decay"]=0.0 #for ablation study
-                                if group["name"]=="model_rgb_lattice_values":
-                                    group["weight_decay"]=1.0
-                                    # group["weight_decay"]=0.0 #for ablation study
+                    #     #at some point we increase the WD for the model_rgb
+                    #     if iter_nr_for_anneal>=iter_start_curv:
+                    #         for group in optimizer.param_groups:
+                    #             if group["name"]=="model_rgb_without_lattice":
+                    #                 #helps to get detail but a very high value causes the model_sdf.lattice values to get higher and higher to compensate. when they get too high the mish activation overflows due to the internal exp
+                    #                 #a value of 0.1 seems to cause overflow
+                    #                 group["weight_decay"]=0.1
+                    #                 # group["weight_decay"]=0.0 #for ablation study
+                    #             if group["name"]=="model_rgb_lattice_values":
+                    #                 group["weight_decay"]=1.0
+                    #                 # group["weight_decay"]=0.0 #for ablation study
 
-                                #decrease eik_w so that we get the wrinkles
-                                args.eik_w=0.01
-                        #after we optimize with high WD, we lower it again to just get the highlights and sharp view dependant effects
-                        if iter_nr_for_anneal>=lr_milestones[1]+5000:
-                            for group in optimizer.param_groups:
-                                if group["name"]=="model_rgb_without_lattice":
-                                    group["weight_decay"]=0.0
-                                if group["name"]=="model_rgb_lattice_values":
-                                    group["weight_decay"]=0.0
-                        # if iter_nr_for_anneal>=(lr_milestones[1]+5000):
-                            # lipshitz_w=0 #now that we got good geometry, we can reduce the pressure on the rgb model
-
-
-
-
-                        optimizer.zero_grad()
-                        cb.before_backward_pass()
-                        TIME_START("backward")
-                        # print("------doing loss backward with loss ", loss)
-                        loss.backward()
-                        # scaler.scale(loss).backward()
-                        TIME_END("backward")
-
-
-                        # summary(model)
-                        # summary(model_rgb)
-                        # summary(model_bg)
-                        # summary(model_colorcal)
-
-
-
-                        cb.after_backward_pass()
-
-                        #when going from sphere initialization to normal optimization the loss tends to explode a bit
-                        #there is a tendency for the curvature to spike once in a while and this seems to solve it
-                        grad_clip=40
-                        torch.nn.utils.clip_grad_norm(parameters=model.parameters(), max_norm=grad_clip, norm_type=2.0)
-                        torch.nn.utils.clip_grad_norm(parameters=model_rgb.parameters(), max_norm=grad_clip, norm_type=2.0)
-                        torch.nn.utils.clip_grad_norm(parameters=model_bg.parameters(), max_norm=grad_clip, norm_type=2.0)
-                        if model_colorcal is not None:
-                            torch.nn.utils.clip_grad_norm(parameters=model_colorcal.parameters(), max_norm=grad_clip, norm_type=2.0)
-
-                        optimizer.step()
-                        # scaler.step(optimizer)
-                        # scaler.update()
-
-                        # print("----doing step")
-
-                        if scheduler_warmup is not None:
-                            scheduler_warmup.step()
-
-
-                        if not in_process_of_sphere_init and scheduler_warmup is None: #only doing this if the scheduler warmup doesnt exit. the warmup will call this internally
-                            scheduler_lr_decay.step()
-                            # print("doing scheduler lr decay phase iter", phase.iter_nr)
-
-                        if phase.iter_nr==iter_finish_training+1:
-                            print("Finished training at iter ", phase.iter_nr)
-                            is_in_training_loop=False
-                            break 
-
-                        # print("finishing here to debug grad")
-                        # exit(1)
+                    #             #decrease eik_w so that we get the wrinkles
+                    #             args.eik_w=0.01
+                    #     #after we optimize with high WD, we lower it again to just get the highlights and sharp view dependant effects
+                    #     if iter_nr_for_anneal>=lr_milestones[1]+5000:
+                    #         for group in optimizer.param_groups:
+                    #             if group["name"]=="model_rgb_without_lattice":
+                    #                 group["weight_decay"]=0.0
+                    #             if group["name"]=="model_rgb_lattice_values":
+                    #                 group["weight_decay"]=0.0
+                    #     # if iter_nr_for_anneal>=(lr_milestones[1]+5000):
+                    #         # lipshitz_w=0 #now that we got good geometry, we can reduce the pressure on the rgb model
 
 
 
 
-                with torch.set_grad_enabled(False):
-                    model.eval()
-                    model_rgb.eval()
-                    model_bg.eval()
+                    #     optimizer.zero_grad()
+                    #     cb.before_backward_pass()
+                    #     TIME_START("backward")
+                    #     # print("------doing loss backward with loss ", loss)
+                    #     loss.backward()
+                    #     # scaler.scale(loss).backward()
+                    #     TIME_END("backward")
 
 
-                    #save checkpoint
-                    if (phase.iter_nr%50000==0 or phase.iter_nr==1) and save_checkpoint:
-                    # if (phase.iter_nr%1000==0 or phase.iter_nr==1) and save_checkpoint:
-                    # if (phase.iter_nr%1000==0 or phase.iter_nr==1) and save_checkpoint:
-                    # if (phase.iter_nr%300==0 or phase.iter_nr==1) and save_checkpoint:
-                        # root_folder=os.path.join( os.path.dirname(os.path.abspath(__file__))  , "../") #points at the root of hair_recon package
-                        root_folder=checkpoint_path
-                        print("saving checkpoint at ", checkpoint_path)
-                        print("experiment name is",experiment_name)
-                        models_path=os.path.join(root_folder,"checkpoints/", experiment_name, str(phase.iter_nr), "models")
-                        os.makedirs(models_path, exist_ok=True)
-                        model.save(root_folder, experiment_name, phase.iter_nr)
-                        model_rgb.save(root_folder, experiment_name, phase.iter_nr)
-                        model_bg.save(root_folder, experiment_name, phase.iter_nr)
-                        if model_colorcal is not None:
-                            model_colorcal.save(root_folder, experiment_name, phase.iter_nr)
-                        # torch.save(optimizer.state_dict(), os.path.join(models_path, "optimizer.pt")  )
-                        torch.save(torch.get_rng_state(), os.path.join(models_path, "torch_rng_state.pt")  )
-                        #save occupancy grid
-                        if use_occupancy_grid:
-                            torch.save(occupancy_grid.get_grid_values(), os.path.join(models_path, "grid_values.pt")  )
-                            torch.save(occupancy_grid.get_grid_occupancy(), os.path.join(models_path, "grid_occupancy.pt"))
+                    #     # summary(model)
+                    #     # summary(model_rgb)
+                    #     # summary(model_bg)
+                    #     # summary(model_colorcal)
 
 
-                    ###visualize every once in a while
-                    should_visualize_things=False
-                    if with_viewer:
-                        if ngp_gui.m_control_view:
-                            should_visualize_things=True
-                    # if (phase.iter_nr%500==0 or phase.iter_nr==1 or should_visualize_things or just_finished_sphere_fit) and not in_process_of_sphere_init:
-                    if (phase.iter_nr%500==0 or phase.iter_nr==1 or should_visualize_things or just_finished_sphere_fit):
 
-                        if in_process_of_sphere_init:
-                            cos_anneal_ratio=1.0
-                            forced_variance=1.0
+                    #     cb.after_backward_pass()
 
-                        print("phase.iter_nr",  phase.iter_nr, "loss ", loss.item() )
+                    #     #when going from sphere initialization to normal optimization the loss tends to explode a bit
+                    #     #there is a tendency for the curvature to spike once in a while and this seems to solve it
+                    #     grad_clip=40
+                    #     torch.nn.utils.clip_grad_norm(parameters=model.parameters(), max_norm=grad_clip, norm_type=2.0)
+                    #     torch.nn.utils.clip_grad_norm(parameters=model_rgb.parameters(), max_norm=grad_clip, norm_type=2.0)
+                    #     torch.nn.utils.clip_grad_norm(parameters=model_bg.parameters(), max_norm=grad_clip, norm_type=2.0)
+                    #     if model_colorcal is not None:
+                    #         torch.nn.utils.clip_grad_norm(parameters=model_colorcal.parameters(), max_norm=grad_clip, norm_type=2.0)
 
-                        if model_colorcal is not None:
-                            print("model colorcal weight min max",model_colorcal.weight_delta.min(), model_colorcal.weight_delta.max())
-                            print("model colorcal bias min max",model_colorcal.bias.min(), model_colorcal.bias.max())
-                        # print("model_rgb.lattice_values_monolithic min max ", model_rgb.lattice_values_monolithic.min(), model_rgb.lattice_values_monolithic.max())
-                        print("nr_rays_to_create",nr_rays_to_create)
-                        # print("model.lattice_values_monolithic min max", model.lattice_values_monolithic.min(), model.lattice_values_monolithic.max())
-                        # print("model.feat_scale", model.feat_scale)
-                        # print("model_rgb.lattice_values_monolithic min max", model_rgb.lattice_values_monolithic.min(), model_rgb.lattice_values_monolithic.max())
+                    #     optimizer.step()
+                    #     # scaler.step(optimizer)
+                    #     # scaler.update()
 
-                        #if we have a viewer we visualize there
-                        use_only_dense_grid=False
-                        if with_viewer:
+                    #     # print("----doing step")
 
-                            # use_only_dense_grid=ngp_gui.m_use_only_dense_grid
-                            # Gui.show(tensor2mat(gt_rgb).rgb2bgr(), "gt_rgb")
-
-                            vis_width=150
-                            vis_height=150
-                            chunk_size=1000
-                            if first_time_getting_control or ngp_gui.m_control_view:
-                                first_time_getting_control=False
-                                frame_controlable=Frame()
-                                frame_controlable.from_camera(view.m_camera, vis_width, vis_height)
-                                frustum_mesh_controlable=frame_controlable.create_frustum_mesh(0.1)
-                                Scene.show(frustum_mesh_controlable,"frustum_mesh_controlable")
+                    #     if scheduler_warmup is not None:
+                    #         scheduler_warmup.step()
 
 
-                            frame=frame_controlable
-                            #run net
-                            pred_rgb_img, pred_weights_sum_img, pred_normals_img, pred_depth_img, pred_features = run_net_batched(frame, chunk_size,   args, tensor_reel, min_dist_between_samples, max_nr_samples_per_ray, model, model_rgb, model_bg, None, lattice, lattice_bg, iter_nr_for_anneal, aabb, cos_anneal_ratio, forced_variance, nr_samples_bg,  use_occupancy_grid, occupancy_grid, do_imp_sampling)
+                    #     if not in_process_of_sphere_init and scheduler_warmup is None: #only doing this if the scheduler warmup doesnt exit. the warmup will call this internally
+                    #         scheduler_lr_decay.step()
+                    #         # print("doing scheduler lr decay phase iter", phase.iter_nr)
 
-                            #vis
-                            Gui.show(tensor2mat(pred_rgb_img).rgb2bgr(), "pred_rgb_img")
-                            Gui.show(tensor2mat(pred_weights_sum_img), "pred_weights_sum_img")
-                            Gui.show(tensor2mat((pred_normals_img+1)*0.5).rgb2bgr(), "pred_normals_img")
-                            Gui.show(tensor2mat(pred_depth_img), "pred_depth_img")
+                    #     if phase.iter_nr==iter_finish_training+1:
+                    #         print("Finished training at iter ", phase.iter_nr)
+                    #         is_in_training_loop=False
+                    #         break 
 
-                            if not in_process_of_sphere_init:
-                                show_points(pts,"pts")
+                    #     # print("finishing here to debug grad")
+                    #     # exit(1)
 
 
-                            #show a certain layer
-                            points_layer, sdf, sdf_gradients= sample_sdf_in_layer(model, lattice, iter_nr_for_anneal, use_only_dense_grid, layer_size=100, layer_y_coord=0)
-                            sdf_color=colormap(sdf+0.5, "seismic") #we add 0.5 so as to put the zero of the sdf at the center of the colormap
-                            show_points(points_layer, "points_layer", color_per_vert=sdf_color)
+
+
+                # with torch.set_grad_enabled(False):
+                #     model.eval()
+                #     model_rgb.eval()
+                #     model_bg.eval()
+
+
+                #     #save checkpoint
+                #     if (phase.iter_nr%50000==0 or phase.iter_nr==1) and save_checkpoint:
+                #     # if (phase.iter_nr%1000==0 or phase.iter_nr==1) and save_checkpoint:
+                #     # if (phase.iter_nr%1000==0 or phase.iter_nr==1) and save_checkpoint:
+                #     # if (phase.iter_nr%300==0 or phase.iter_nr==1) and save_checkpoint:
+                #         # root_folder=os.path.join( os.path.dirname(os.path.abspath(__file__))  , "../") #points at the root of hair_recon package
+                #         root_folder=checkpoint_path
+                #         print("saving checkpoint at ", checkpoint_path)
+                #         print("experiment name is",experiment_name)
+                #         models_path=os.path.join(root_folder,"checkpoints/", experiment_name, str(phase.iter_nr), "models")
+                #         os.makedirs(models_path, exist_ok=True)
+                #         model.save(root_folder, experiment_name, phase.iter_nr)
+                #         model_rgb.save(root_folder, experiment_name, phase.iter_nr)
+                #         model_bg.save(root_folder, experiment_name, phase.iter_nr)
+                #         if model_colorcal is not None:
+                #             model_colorcal.save(root_folder, experiment_name, phase.iter_nr)
+                #         # torch.save(optimizer.state_dict(), os.path.join(models_path, "optimizer.pt")  )
+                #         torch.save(torch.get_rng_state(), os.path.join(models_path, "torch_rng_state.pt")  )
+                #         #save occupancy grid
+                #         if use_occupancy_grid:
+                #             torch.save(occupancy_grid.get_grid_values(), os.path.join(models_path, "grid_values.pt")  )
+                #             torch.save(occupancy_grid.get_grid_occupancy(), os.path.join(models_path, "grid_occupancy.pt"))
+
+
+                #     ###visualize every once in a while
+                #     should_visualize_things=False
+                #     if with_viewer:
+                #         if ngp_gui.m_control_view:
+                #             should_visualize_things=True
+                #     # if (phase.iter_nr%500==0 or phase.iter_nr==1 or should_visualize_things or just_finished_sphere_fit) and not in_process_of_sphere_init:
+                #     if (phase.iter_nr%500==0 or phase.iter_nr==1 or should_visualize_things or just_finished_sphere_fit):
+
+                #         if in_process_of_sphere_init:
+                #             cos_anneal_ratio=1.0
+                #             forced_variance=1.0
+
+                #         print("phase.iter_nr",  phase.iter_nr, "loss ", loss.item() )
+
+                #         if model_colorcal is not None:
+                #             print("model colorcal weight min max",model_colorcal.weight_delta.min(), model_colorcal.weight_delta.max())
+                #             print("model colorcal bias min max",model_colorcal.bias.min(), model_colorcal.bias.max())
+                #         # print("model_rgb.lattice_values_monolithic min max ", model_rgb.lattice_values_monolithic.min(), model_rgb.lattice_values_monolithic.max())
+                #         print("nr_rays_to_create",nr_rays_to_create)
+                #         # print("model.lattice_values_monolithic min max", model.lattice_values_monolithic.min(), model.lattice_values_monolithic.max())
+                #         # print("model.feat_scale", model.feat_scale)
+                #         # print("model_rgb.lattice_values_monolithic min max", model_rgb.lattice_values_monolithic.min(), model_rgb.lattice_values_monolithic.max())
+
+                #         #if we have a viewer we visualize there
+                #         use_only_dense_grid=False
+                #         if with_viewer:
+
+                #             # use_only_dense_grid=ngp_gui.m_use_only_dense_grid
+                #             # Gui.show(tensor2mat(gt_rgb).rgb2bgr(), "gt_rgb")
+
+                #             vis_width=150
+                #             vis_height=150
+                #             chunk_size=1000
+                #             if first_time_getting_control or ngp_gui.m_control_view:
+                #                 first_time_getting_control=False
+                #                 frame_controlable=Frame()
+                #                 frame_controlable.from_camera(view.m_camera, vis_width, vis_height)
+                #                 frustum_mesh_controlable=frame_controlable.create_frustum_mesh(0.1)
+                #                 Scene.show(frustum_mesh_controlable,"frustum_mesh_controlable")
+
+
+                #             frame=frame_controlable
+                #             #run net
+                #             pred_rgb_img, pred_weights_sum_img, pred_normals_img, pred_depth_img, pred_features = run_net_batched(frame, chunk_size,   args, tensor_reel, min_dist_between_samples, max_nr_samples_per_ray, model, model_rgb, model_bg, None, lattice, lattice_bg, iter_nr_for_anneal, aabb, cos_anneal_ratio, forced_variance, nr_samples_bg,  use_occupancy_grid, occupancy_grid, do_imp_sampling)
+
+                #             #vis
+                #             Gui.show(tensor2mat(pred_rgb_img).rgb2bgr(), "pred_rgb_img")
+                #             Gui.show(tensor2mat(pred_weights_sum_img), "pred_weights_sum_img")
+                #             Gui.show(tensor2mat((pred_normals_img+1)*0.5).rgb2bgr(), "pred_normals_img")
+                #             Gui.show(tensor2mat(pred_depth_img), "pred_depth_img")
+
+                #             if not in_process_of_sphere_init:
+                #                 show_points(pts,"pts")
+
+
+                #             #show a certain layer
+                #             points_layer, sdf, sdf_gradients= sample_sdf_in_layer(model, lattice, iter_nr_for_anneal, use_only_dense_grid, layer_size=100, layer_y_coord=0)
+                #             sdf_color=colormap(sdf+0.5, "seismic") #we add 0.5 so as to put the zero of the sdf at the center of the colormap
+                #             show_points(points_layer, "points_layer", color_per_vert=sdf_color)
                         
-                    if (phase.iter_nr%5000==0 or phase.iter_nr==1 or just_finished_sphere_fit) and with_tensorboard and not in_process_of_sphere_init:
+                #     if (phase.iter_nr%5000==0 or phase.iter_nr==1 or just_finished_sphere_fit) and with_tensorboard and not in_process_of_sphere_init:
 
-                        if isinstance(loader_train, DataLoaderPhenorobCP1):
-                            frame=random.choice(frames_train)
-                        else:
-                            frame=phase.loader.get_random_frame() #we just get this frame so that the tensorboard can render from this frame
-
-
-                        #make from the gt frame a smaller frame until we reach a certain size
-                        frame_subsampled=frame.subsample(2.0, subsample_imgs=False)
-                        while min(frame_subsampled.width, frame_subsampled.height) >400:
-                            frame_subsampled=frame_subsampled.subsample(2.0, subsample_imgs=False)
-                        vis_width=frame_subsampled.width
-                        vis_height=frame_subsampled.height
-                        frame=frame_subsampled
-
-                        chunk_size=1000
+                #         if isinstance(loader_train, DataLoaderPhenorobCP1):
+                #             frame=random.choice(frames_train)
+                #         else:
+                #             frame=phase.loader.get_random_frame() #we just get this frame so that the tensorboard can render from this frame
 
 
-                        pred_rgb_img, pred_weights_sum_img, pred_normals_img, pred_depth_img, pred_features = run_net_batched(frame, chunk_size,   args, tensor_reel, min_dist_between_samples, max_nr_samples_per_ray, model, model_rgb, model_bg, None, lattice, lattice_bg, iter_nr_for_anneal, aabb, cos_anneal_ratio, forced_variance, nr_samples_bg,  use_occupancy_grid, occupancy_grid, do_imp_sampling)
+                #         #make from the gt frame a smaller frame until we reach a certain size
+                #         frame_subsampled=frame.subsample(2.0, subsample_imgs=False)
+                #         while min(frame_subsampled.width, frame_subsampled.height) >400:
+                #             frame_subsampled=frame_subsampled.subsample(2.0, subsample_imgs=False)
+                #         vis_width=frame_subsampled.width
+                #         vis_height=frame_subsampled.height
+                #         frame=frame_subsampled
 
-                        #vis
-                        cb["tensorboard_callback"].tensorboard_writer.add_image('instant_ngp_2/' + phase.name + '/pred_rgb_img', pred_rgb_img.squeeze(), phase.iter_nr)
-                        if pred_normals_img is not None:
-                            cb["tensorboard_callback"].tensorboard_writer.add_image('instant_ngp_2/' + phase.name + '/pred_normals_img', torch.clamp(((pred_normals_img+1)*0.5).squeeze(),0,1), phase.iter_nr)
+                #         chunk_size=1000
+
+
+                #         pred_rgb_img, pred_weights_sum_img, pred_normals_img, pred_depth_img, pred_features = run_net_batched(frame, chunk_size,   args, tensor_reel, min_dist_between_samples, max_nr_samples_per_ray, model, model_rgb, model_bg, None, lattice, lattice_bg, iter_nr_for_anneal, aabb, cos_anneal_ratio, forced_variance, nr_samples_bg,  use_occupancy_grid, occupancy_grid, do_imp_sampling)
+
+                #         #vis
+                #         cb["tensorboard_callback"].tensorboard_writer.add_image('instant_ngp_2/' + phase.name + '/pred_rgb_img', pred_rgb_img.squeeze(), phase.iter_nr)
+                #         if pred_normals_img is not None:
+                #             cb["tensorboard_callback"].tensorboard_writer.add_image('instant_ngp_2/' + phase.name + '/pred_normals_img', torch.clamp(((pred_normals_img+1)*0.5).squeeze(),0,1), phase.iter_nr)
                         
-                        #some more scalars
-                        # cb["tensorboard_callback"].tensorboard_writer.add_scalar('instant_ngp_2/' + phase.name + '/model_sdf_lattice_max', model.lattice_values_monolithic.max().item(), phase.iter_nr)
-                        # cb["tensorboard_callback"].tensorboard_writer.add_scalar('instant_ngp_2/' + phase.name + '/feat_scale', model.feat_scale.item(), phase.iter_nr)
+                #         #some more scalars
+                #         # cb["tensorboard_callback"].tensorboard_writer.add_scalar('instant_ngp_2/' + phase.name + '/model_sdf_lattice_max', model.lattice_values_monolithic.max().item(), phase.iter_nr)
+                #         # cb["tensorboard_callback"].tensorboard_writer.add_scalar('instant_ngp_2/' + phase.name + '/feat_scale', model.feat_scale.item(), phase.iter_nr)
 
 
                         
@@ -1108,14 +1029,14 @@ def train(args, config_path, hyperparams, loader_train, experiment_name, with_vi
 
 
 
-                if phase.loader.is_finished():
-                #     cb.epoch_ended(phase=phase, model=model, save_checkpoint=train_params.save_checkpoint(), checkpoint_path=train_params.checkpoint_path() ) 
-                #     cb.phase_ended(phase=phase) 
-                    phase.loader.reset()
+                # if phase.loader.is_finished():
+                # #     cb.epoch_ended(phase=phase, model=model, save_checkpoint=train_params.save_checkpoint(), checkpoint_path=train_params.checkpoint_path() ) 
+                # #     cb.phase_ended(phase=phase) 
+                #     phase.loader.reset()
 
 
-                if with_viewer:
-                    view.update()
+                # if with_viewer:
+                #     view.update()
 
 
 
@@ -1129,28 +1050,20 @@ def run():
 
     #argparse
     parser = argparse.ArgumentParser(description='Train sdf and color')
-    # parser.add_argument('--nr_iter_sphere_fit', type=int, default=4000, help="Nr iterations doing sphere fitting")
-    # parser.add_argument('--nr_iter_sphere_fit', type=int, default=4, help="Nr iterations doing sphere fitting")
-    # parser.add_argument('--eik_w', type=float, default=0.04, help="Weight for the eikonal loss")
-    # parser.add_argument('--curv_w', type=float, default=1300.0, help="Weight for the curvature loss")
     parser.add_argument('--dataset', default="", required=True, help='Dataset like bmvs, dtu, multiface')
     parser.add_argument('--scene', default="", required=True, help='Scene name like dtu_scan24')
     parser.add_argument('--comp_name', required=True,  help='Tells which computer are we using which influences the paths for finding the data')
     parser.add_argument('--low_res', action='store_true', help="Use_low res images for training for when you have little GPU memory")
     parser.add_argument('--exp_info', default="", help='Experiment info string useful for distinguishing one experiment for another')
-    # parser.add_argument('--use_all_imgs', action='store_true', help="Use all images instead of just the training set")
     parser.add_argument('--with_mask', action='store_true', help="Set this to true in order to train with a mask")
     parser.add_argument('--no_viewer', action='store_true', help="Set this to true in order disable the viewer")
     args = parser.parse_args()
     with_viewer=not args.no_viewer
 
-
-
     #get the checkpoints path which will be at the root of the hash_sdf package 
     hash_sdf_root=os.path.dirname(os.path.abspath(hash_sdf.__file__))
     checkpoint_path=os.path.join(hash_sdf_root, "checkpoints")
     os.makedirs(checkpoint_path, exist_ok=True)
-
 
 
     print("args.with_mask", args.with_mask)
@@ -1159,7 +1072,9 @@ def run():
     print("with_viewer", with_viewer)
 
 
-    experiment_name="hashsdf_"+args.scene+args.exp_info+"_"
+    experiment_name="hashsdf_"+args.scene
+    if args.exp_info:
+        experiment_name+="_"+args.exp_info
 
 
     loader_train, loader_test= create_dataloader(config_path, args.dataset, args.scene, args.low_res, args.comp_name, args.with_mask)
@@ -1173,7 +1088,8 @@ def run():
 
 
 
-    train(args, config_path, hyperparams, loader_train, experiment_name, with_viewer, train_params.with_tensorboard(), train_params.save_checkpoint(), checkpoint_path, tensor_reel)
+    # train(args, config_path, hyperparams, loader_train, experiment_name, with_viewer, train_params.with_tensorboard(), train_params.save_checkpoint(), checkpoint_path, tensor_reel)
+    train(args, config_path, hyperparams, train_params, loader_train, experiment_name, with_viewer, checkpoint_path, tensor_reel)
 
     #finished training
     return

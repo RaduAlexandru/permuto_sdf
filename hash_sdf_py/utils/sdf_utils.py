@@ -201,7 +201,7 @@ def sphere_trace(nr_sphere_traces, ray_origins, ray_dirs, model, return_gradient
     #get also a t value for the ray
     t_val=(pts-ray_origins).norm(dim=-1, keepdim=True)
 
-    print("pts end is",pts.shape)
+    # print("pts end is",pts.shape)
 
     return pts, sdf, sdf_gradients, t_val
 

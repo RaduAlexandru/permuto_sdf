@@ -108,3 +108,13 @@ torch::Tensor Sphere::rand_points_inside(const int nr_points){
 
 }
 
+torch::Tensor Sphere::check_point_inside_primitive(const torch::Tensor& points){
+
+    torch::Tensor points_in_sphere_coords=points-m_center_tensor.view({1,3});
+    torch::Tensor point_dist_from_center_of_sphere=points_in_sphere_coords.norm(2, 1, true); // l2norm, dim ,keepdim
+
+    torch::Tensor is_inside_primitive=point_dist_from_center_of_sphere<m_radius;
+
+    return is_inside_primitive;
+}
+

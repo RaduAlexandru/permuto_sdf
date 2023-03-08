@@ -51,6 +51,7 @@ PYBIND11_MODULE(hash_sdf, m) {
     .def(py::init<const float, const Eigen::Vector3f>())
     .def("ray_intersection", &Sphere::ray_intersection ) 
     .def("rand_points_inside", &Sphere::rand_points_inside, py::arg("nr_points") ) 
+    .def("check_point_inside_primitive", &Sphere::check_point_inside_primitive ) 
     .def_readwrite("m_center_tensor", &Sphere::m_center_tensor ) 
     .def_readwrite("m_center", &Sphere::m_center ) 
     .def_readwrite("m_radius", &Sphere::m_radius ) 

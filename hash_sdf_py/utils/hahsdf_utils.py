@@ -326,9 +326,9 @@ def eikonal_loss(sdf_gradients):
     gradient_error = (torch.linalg.norm(sdf_gradients.reshape(-1, 3), ord=2, dim=-1) - 1.0) ** 2
     return gradient_error.mean()
 
-def loss_sphere_init(dataset_name, nr_points, aabb, model, lattice, iter_nr_for_anneal, use_only_dense_grid):
+def loss_sphere_init(dataset_name, nr_points, aabb, model,  iter_nr_for_anneal ):
     offsurface_points=aabb.rand_points_inside(nr_points=nr_points)
-    offsurface_sdf, offsurface_sdf_gradients, feat, sdf_residual = model.get_sdf_and_gradient(offsurface_points, lattice, iter_nr_for_anneal, use_only_dense_grid)
+    offsurface_sdf, offsurface_sdf_gradients, feat = model.get_sdf_and_gradient(offsurface_points, iter_nr_for_anneal)
     #for phenorob
     if dataset_name=="phenorobcp1":
         sphere_ground=SpherePy(radius=2.0, center=[0,-2.4,0])

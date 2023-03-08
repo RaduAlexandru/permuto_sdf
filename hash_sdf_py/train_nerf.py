@@ -130,8 +130,6 @@ def run_net_in_chunks(frame, chunk_size, args, tensor_reel, hyperparams, model, 
 #trains the nerf model
 def train(args, config_path, hyperparams, train_params, loader_train, experiment_name, with_viewer, checkpoint_path, tensor_reel):
 
-    save_checkpoint=train_params.save_checkpoint()
-
     if with_viewer:
         view=Viewer.create(config_path)
         ngp_gui=NGPGui.create(view)
@@ -174,7 +172,7 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
     is_in_training_loop=True
 
 
-    while ( True ): 
+    while ( is_in_training_loop ): 
         model.train(phase.grad)
         model_bg.train(phase.grad)
         loss=0 
@@ -226,7 +224,7 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
 
 
         #save checkpoint
-        if save_checkpoint and phase.iter_nr%5000==0:
+        if train_params.save_checkpoint() and phase.iter_nr%5000==0:
             model.save(checkpoint_path, experiment_name, phase.iter_nr)
             model_bg.save(checkpoint_path, experiment_name, phase.iter_nr, additional_name="_bg")
             if hyperparams.use_color_calibration:
