@@ -45,7 +45,7 @@ public:
     void update_with_density(const torch::Tensor density, const float decay, const float occupancy_tresh);
     void update_with_density_random_sample(const torch::Tensor point_indices, const torch::Tensor density, const float decay, const float occupancy_tresh);
     void update_with_sdf(const torch::Tensor sdf, const float inv_s, const float max_eikonal_abs, const float occupancy_thresh);
-    void update_with_sdf_random_sample(const torch::Tensor point_indices, const torch::Tensor sdf, const float inv_s, const float max_eikonal_abs, const float occupancy_thresh);
+    void update_with_sdf_random_sample(const torch::Tensor point_indices, const torch::Tensor sdf, const float inv_s, const float occupancy_thresh);
 
     // int m_val_dim; //the nr of features for each voxel
     int m_nr_voxels_per_dim;

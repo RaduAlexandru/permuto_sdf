@@ -13,6 +13,7 @@ public:
     RaySamplesPacked compact_to_valid_samples();
     void set_sdf(const torch::Tensor& sdf);
     int compute_exact_nr_samples();
+    void initialize_with_one_sample_per_ray(const torch::Tensor one_sample_per_ray, const torch::Tensor dirs); //usefult for creating samples when doing sphere tracing in which we have only one sample per ray. And then we can pass around this raysamples packed even if its compacted or not
         
 
     //we keep the atributes in different tensors because it makes it easier to encode the directions later by just applying SH over the samples_dirs

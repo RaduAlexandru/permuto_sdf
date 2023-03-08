@@ -222,7 +222,7 @@ std::tuple<torch::Tensor, torch::Tensor> VolumeRendering::cumprod_alpha2transmit
 torch::Tensor VolumeRendering::integrate_with_weights(const RaySamplesPacked& ray_samples_packed, const torch::Tensor& rgb_samples, const torch::Tensor& weights_samples){
 
     int nr_rays=ray_samples_packed.ray_start_end_idx.size(0);
-    int nr_samples_total=ray_samples_packed.samples_z.size(0);
+    // int nr_samples_total=ray_samples_packed.samples_z.size(0);
 
     //fill the samples
     const dim3 blocks = { (unsigned int)div_round_up(nr_rays, BLOCK_SIZE), 1, 1 }; 

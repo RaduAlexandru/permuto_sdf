@@ -449,7 +449,8 @@ void OccupancyGrid::update_with_sdf(const torch::Tensor sdf, const float inv_s, 
 
 }
 
-void OccupancyGrid::update_with_sdf_random_sample(const torch::Tensor point_indices, const torch::Tensor sdf, const float inv_s, const float max_eikonal_abs, const float occupancy_thresh){
+// void OccupancyGrid::update_with_sdf_random_sample(const torch::Tensor point_indices, const torch::Tensor sdf, const float inv_s, const float max_eikonal_abs, const float occupancy_thresh){
+void OccupancyGrid::update_with_sdf_random_sample(const torch::Tensor point_indices, const torch::Tensor sdf, const float inv_s, const float occupancy_thresh){
 
     CHECK(sdf.dim()==2) << "density should have dim 2 correspondin to nr_pointsx1. However it has sizes" << sdf.sizes();
     // CHECK(decay<1.0) <<"We except the decay to be <1.0 but it is " << decay;
@@ -469,7 +470,7 @@ void OccupancyGrid::update_with_sdf_random_sample(const torch::Tensor point_indi
                 m_nr_voxels_per_dim,
                 point_indices.packed_accessor32<int,1,torch::RestrictPtrTraits>(),
                 inv_s,
-                max_eikonal_abs,
+                // max_eikonal_abs,
                 occupancy_thresh,
                 // check_neighbours_density,
                 // m_grid_full_values.packed_accessor32<float,3,torch::RestrictPtrTraits>()

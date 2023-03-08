@@ -119,6 +119,33 @@ RaySamplesPacked RaySamplesPacked::compact_to_valid_samples(){
     return compact_ray_samples_packed;
 }
 
+void RaySamplesPacked::initialize_with_one_sample_per_ray(const torch::Tensor one_sample_per_ray, const torch::Tensor dirs){
+
+    int nr_rays=one_sample_per_ray.size(0);
+
+    samples_pos=one_sample_per_ray;
+    // samples_pos_4d
+    samples_dirs=dirs;
+    samples_z=torch::zeros({ nr_rays,1 },  torch::dtype(torch::kFloat32).device(torch::kCUDA, 0)  );
+    samples_dt=torch::zeros({ nr_rays,1 },  torch::dtype(torch::kFloat32).device(torch::kCUDA, 0)  );
+    // samples_sdf
+    ray_fixed_dt=torch::zeros({ nr_rays,1 },  torch::dtype(torch::kFloat32).device(torch::kCUDA, 0)  );
+
+    torch::Tensor idx_start=torch::arange(nr_rays).view({-1,1});
+    torch::Tensor idx_end=idx_start+1;
+    ray_start_end_idx=torch::cat({idx_start, idx_end},1);
+
+    int max_nr_samples=nr_rays;
+    cur_nr_samples.fill_(nr_rays);
+
+    rays_have_equal_nr_of_samples=true;
+    fixed_nr_of_samples_per_ray=1;
+
+    bool has_sdf=false;
+
+
+}
+
 void RaySamplesPacked::set_sdf(const torch::Tensor& sdf){
     samples_sdf=sdf.view({-1,1});
     has_sdf=true;

@@ -2774,171 +2774,157 @@ class SDF(torch.nn.Module):
 
         return sdf, gradients, geom_feat
 
-    def get_sdf_and_curvature_1d_precomputed_gradient(self, points, sdf_center, sdf_gradients, ls, iter_nr, use_only_dense_grid):
-        #get the curvature along a certain random direction for each point
+    # def get_sdf_and_curvature_1d_precomputed_gradient(self, points, sdf_center, sdf_gradients, ls, iter_nr, use_only_dense_grid):
+    #     #get the curvature along a certain random direction for each point
 
-        # method="finite_difference" #autograd, finite_difference
-
-
-        if method=="finite_difference":
-            # do it by finite differences because doing it with autograd doesnt work with the lattice since it would require a double backward through the splatting and slicing function
-            #do it by taking the central point and then the p+epsilon and p-epsilon in some random directions
-
-            #to the original positions, add also a tiny epsilon 
-            nr_points_original=points.shape[0]
-            epsilon=1e-4
-            # epsilon_end=1e-4
-            # epsilon=map_range_val(iter_nr, 0, 10000, 1e-2, epsilon_end)
-            # epsilon=np.random.uniform(1e-4,1e-3)
-            rand_directions=torch.randn_like(points)
-            rand_directions=F.normalize(rand_directions,dim=-1)
-
-            #instead of random direction we take the normals at these points, and calculate a random vector that is orthogonal 
-            # with torch.set_grad_enabled(True):
-            #     sdf, sdf_gradients, feat=self.get_sdf_and_gradient(points, ls, iter_nr)
-            #     normals=F.normalize(sdf_gradients,dim=-1)
-            #     tangent=torch.cross(normals, rand_directions)
-            #     rand_directions=tangent #set the random moving direction to be the tangent direction now
-
-            normals=F.normalize(sdf_gradients,dim=-1)
-            # normals=normals.detach()
-            tangent=torch.cross(normals, rand_directions)
-            rand_directions=tangent #set the random moving direction to be the tangent direction now
-
-            
-
-            points_plus=points.clone()+rand_directions*epsilon
-            points_minus=points.clone()-rand_directions*epsilon
-
-            points_full=torch.cat([ points_plus, points_minus],0)
-
-            sdf_full, feat_full, sdf_residual = self.forward(points_full, ls, iter_nr, use_only_dense_grid)
+    #     # method="finite_difference" #autograd, finite_difference
 
 
-            #we dont return a feat because we don't compute here the feat of the center point
-            # feat=None
-            # if feat_full is not None:            
-                # feats=feat_full.chunk(2, dim=0) 
-                # feat=feats[0]
+    #     if method=="finite_difference":
+    #         # do it by finite differences because doing it with autograd doesnt work with the lattice since it would require a double backward through the splatting and slicing function
+    #         #do it by taking the central point and then the p+epsilon and p-epsilon in some random directions
 
-            sdfs=sdf_full.chunk(2, dim=0) 
-            sdf=sdf_center
-            sdf_plus=sdfs[0]
-            sdf_minus=sdfs[1]
+    #         #to the original positions, add also a tiny epsilon 
+    #         nr_points_original=points.shape[0]
+    #         epsilon=1e-4
+    #         # epsilon_end=1e-4
+    #         # epsilon=map_range_val(iter_nr, 0, 10000, 1e-2, epsilon_end)
+    #         # epsilon=np.random.uniform(1e-4,1e-3)
+    #         rand_directions=torch.randn_like(points)
+    #         rand_directions=F.normalize(rand_directions,dim=-1)
 
-            curvature=(sdf_plus-2*sdf+sdf_minus)/(epsilon*epsilon)
-            
+    #         #instead of random direction we take the normals at these points, and calculate a random vector that is orthogonal 
+    #         # with torch.set_grad_enabled(True):
+    #         #     sdf, sdf_gradients, feat=self.get_sdf_and_gradient(points, ls, iter_nr)
+    #         #     normals=F.normalize(sdf_gradients,dim=-1)
+    #         #     tangent=torch.cross(normals, rand_directions)
+    #         #     rand_directions=tangent #set the random moving direction to be the tangent direction now
 
-
-           
-
-        else:
-            print("method not known")
-            exit(1)
-
-
-
-
-        return sdf, curvature, None, None #we dont return a feat because we don't compute here the feat of the center point
-
-    def get_sdf_and_curvature_1d(self, points, ls, iter_nr):
-        #get the curvature along a certain random direction for each point
-
-        method="finite_difference" #autograd, finite_difference
-
-
-        if method=="finite_difference":
-            # do it by finite differences because doing it with autograd doesnt work with the lattice since it would require a double backward through the splatting and slicing function
-            #do it by taking the central point and then the p+epsilon and p-epsilon in some random directions
-
-            #to the original positions, add also a tiny epsilon 
-            nr_points_original=points.shape[0]
-            epsilon=1e-4
-            rand_directions=torch.randn_like(points)
-            rand_directions=F.normalize(rand_directions,dim=-1)
-
-            # instead of random direction we take the normals at these points, and calculate a random vector that is orthogonal 
-            with torch.set_grad_enabled(True):
-                sdf, sdf_gradients, feat=self.get_sdf_and_gradient(points, ls, iter_nr)
-                normals=F.normalize(sdf_gradients,dim=-1)
-                tangent=torch.cross(normals, rand_directions)
-                rand_directions=tangent #set the random moving direction to be the tangent direction now
-
-            normals=F.normalize(sdf_gradients,dim=-1)
-            tangent=torch.cross(normals, rand_directions)
-            rand_directions=tangent #set the random moving direction to be the tangent direction now
+    #         normals=F.normalize(sdf_gradients,dim=-1)
+    #         # normals=normals.detach()
+    #         tangent=torch.cross(normals, rand_directions)
+    #         rand_directions=tangent #set the random moving direction to be the tangent direction now
 
             
 
-            points_plus=points.clone()+rand_directions*epsilon
-            points_minus=points.clone()-rand_directions*epsilon
+    #         points_plus=points.clone()+rand_directions*epsilon
+    #         points_minus=points.clone()-rand_directions*epsilon
 
-            points_full=torch.cat([points, points_plus, points_minus],0)
+    #         points_full=torch.cat([ points_plus, points_minus],0)
 
-            sdf_full, feat_full = self.forward(points_full, ls, iter_nr)
+    #         sdf_full, feat_full, sdf_residual = self.forward(points_full, ls, iter_nr, use_only_dense_grid)
 
-            feat=None
-            if feat_full is not None:            
-                feats=feat_full.chunk(3, dim=0) 
-                feat=feats[0]
 
-            sdfs=sdf_full.chunk(3, dim=0) 
-            sdf=sdfs[0]
-            sdf_plus=sdfs[1]
-            sdf_minus=sdfs[2]
+    #         #we dont return a feat because we don't compute here the feat of the center point
+    #         # feat=None
+    #         # if feat_full is not None:            
+    #             # feats=feat_full.chunk(2, dim=0) 
+    #             # feat=feats[0]
 
-            curvature=(sdf_plus-2*sdf+sdf_minus)/(epsilon*epsilon)
+    #         sdfs=sdf_full.chunk(2, dim=0) 
+    #         sdf=sdf_center
+    #         sdf_plus=sdfs[0]
+    #         sdf_minus=sdfs[1]
+
+    #         curvature=(sdf_plus-2*sdf+sdf_minus)/(epsilon*epsilon)
             
 
 
            
 
-        else:
-            print("method not known")
-            exit(1)
+    #     else:
+    #         print("method not known")
+    #         exit(1)
 
 
 
 
-        return sdf, curvature, feat
+    #     return sdf, curvature, None, None #we dont return a feat because we don't compute here the feat of the center point
 
-    def get_sdf_and_curvature_1d_precomputed_gradient_normal_based(self, points, sdf_gradients, ls, iter_nr):
+    # def get_sdf_and_curvature_1d(self, points, ls, iter_nr):
+    #     #get the curvature along a certain random direction for each point
+
+    #     method="finite_difference" #autograd, finite_difference
+
+
+    #     if method=="finite_difference":
+    #         # do it by finite differences because doing it with autograd doesnt work with the lattice since it would require a double backward through the splatting and slicing function
+    #         #do it by taking the central point and then the p+epsilon and p-epsilon in some random directions
+
+    #         #to the original positions, add also a tiny epsilon 
+    #         nr_points_original=points.shape[0]
+    #         epsilon=1e-4
+    #         rand_directions=torch.randn_like(points)
+    #         rand_directions=F.normalize(rand_directions,dim=-1)
+
+    #         # instead of random direction we take the normals at these points, and calculate a random vector that is orthogonal 
+    #         with torch.set_grad_enabled(True):
+    #             sdf, sdf_gradients, feat=self.get_sdf_and_gradient(points, ls, iter_nr)
+    #             normals=F.normalize(sdf_gradients,dim=-1)
+    #             tangent=torch.cross(normals, rand_directions)
+    #             rand_directions=tangent #set the random moving direction to be the tangent direction now
+
+    #         normals=F.normalize(sdf_gradients,dim=-1)
+    #         tangent=torch.cross(normals, rand_directions)
+    #         rand_directions=tangent #set the random moving direction to be the tangent direction now
+
+            
+
+    #         points_plus=points.clone()+rand_directions*epsilon
+    #         points_minus=points.clone()-rand_directions*epsilon
+
+    #         points_full=torch.cat([points, points_plus, points_minus],0)
+
+    #         sdf_full, feat_full = self.forward(points_full, ls, iter_nr)
+
+    #         feat=None
+    #         if feat_full is not None:            
+    #             feats=feat_full.chunk(3, dim=0) 
+    #             feat=feats[0]
+
+    #         sdfs=sdf_full.chunk(3, dim=0) 
+    #         sdf=sdfs[0]
+    #         sdf_plus=sdfs[1]
+    #         sdf_minus=sdfs[2]
+
+    #         curvature=(sdf_plus-2*sdf+sdf_minus)/(epsilon*epsilon)
+            
+
+
+           
+
+    #     else:
+    #         print("method not known")
+    #         exit(1)
+
+
+
+
+    #     return sdf, curvature, feat
+
+    def get_sdf_and_curvature_1d_precomputed_gradient_normal_based(self, points, sdf_gradients,iter_nr):
         #get the curvature along a certain random direction for each point
         #does it by computing the normal at a shifted point on the tangent plant and then computing a dot produt
 
-        # method="finite_difference" #autograd, finite_difference
-        # method="autograd" #autograd, finite_difference
 
-        # print("sdf_gradients ", sdf_gradients.min(), sdf_gradients.max())
-
-
-        #do it by taking the central point and then the p+epsilon and p-epsilon in some random directions
 
         #to the original positions, add also a tiny epsilon 
         nr_points_original=points.shape[0]
         epsilon=1e-4
-        # epsilon=np.random.uniform(1e-4,1e-3)
         rand_directions=torch.randn_like(points)
         rand_directions=F.normalize(rand_directions,dim=-1)
 
         #instead of random direction we take the normals at these points, and calculate a random vector that is orthogonal 
-        # with torch.set_grad_enabled(True):
-        #     sdf, sdf_gradients, feat=self.get_sdf_and_gradient(points, ls, iter_nr)
-        #     normals=F.normalize(sdf_gradients,dim=-1)
-        #     tangent=torch.cross(normals, rand_directions)
-        #     rand_directions=tangent #set the random moving direction to be the tangent direction now
-
         normals=F.normalize(sdf_gradients,dim=-1)
         # normals=normals.detach()
         tangent=torch.cross(normals, rand_directions)
         rand_directions=tangent #set the random moving direction to be the tangent direction now
-
         
 
         points_shifted=points.clone()+rand_directions*epsilon
         
         #get the gradient at the shifted point
-        sdf_shifted, sdf_gradients_shifted, feat_shifted, _=self.get_sdf_and_gradient(points_shifted, ls, iter_nr, use_only_dense_grid=False) 
+        sdf_shifted, sdf_gradients_shifted, feat_shifted=self.get_sdf_and_gradient(points_shifted, iter_nr) 
 
         normals_shifted=F.normalize(sdf_gradients_shifted,dim=-1)
 
@@ -2946,26 +2932,10 @@ class SDF(torch.nn.Module):
         #the dot would assign low weight importance to normals that are almost the same, and increasing error the more they deviate. So it's something like and L2 loss. But we want a L1 loss so we get the angle, and then we map it to range [0,1]
         angle=torch.acos(torch.clamp(dot, -1.0+1e-6, 1.0-1e-6)) #goes to range 0 when the angle is the same and 2pi when is opposite
 
-        # print("points is ", points.min(), points.max())
-        # print("points_shifted is ", points_shifted.min(), points_shifted.max())
-        # print("sdf_gradients ", sdf_gradients.min(), sdf_gradients.max())
-        # print("sdf_gradients_shifted ", sdf_gradients_shifted.min(), sdf_gradients_shifted.max())
-        # print("dot is ", dot.min(), dot.max())
-        # print("angle is ", angle.min(), angle.max())
 
         curvature=angle/(2.0*math.pi) #map to [0,1 range]
 
-            # curvature= ((normals-normals_shifted)**2 ).sum(dim=-1, keepdim=True)
-
-
-
-           
-
-        
-
-
-
-        return sdf_shifted, curvature, feat_shifted
+        return sdf_shifted, curvature
 
     def save(self, root_folder, experiment_name, iter_nr):
 
@@ -2987,6 +2957,7 @@ class RGB(torch.nn.Module):
         # self.pick_rand_pixels= RandPixelPicker(low_discrepancy=False) #do NOT use los discrepancy for now, it seems to align some of the rays to some directions so maybe it's not that good of an idea
         # self.pixel_sampler=PixelSampler()
         self.create_rays=CreateRaysModule()
+        self.volume_renderer_neus = VolumeRenderingNeus()
 
         #create encoding
         pos_dim=in_channels
@@ -3020,7 +2991,7 @@ class RGB(torch.nn.Module):
         self.softplus=torch.nn.Softplus()
         self.sigmoid = torch.nn.Sigmoid()
 
-    def forward(self, points, samples_dirs, sdf_gradients, geom_feat,  iter_nr, model_colorcal=None, img_indices=None, ray_start_end_idx=None, nr_rays=None):
+    def forward(self, points, samples_dirs, sdf_gradients, geom_feat,  iter_nr, model_colorcal=None, img_indices=None, ray_start_end_idx=None):
 
      
 
@@ -3039,22 +3010,14 @@ class RGB(torch.nn.Module):
         normals=F.normalize( sdf_gradients.view(-1,3), dim=1 )
 
        
-        x=torch.cat([ray_features_full, samples_dirs_enc, normals, geom_feat],1)
+        x=torch.cat([point_features, samples_dirs_enc, normals, geom_feat],1)
        
 
-        TIME_START("RGB_mlp")
         x=self.mlp(x)
-        TIME_END("RGB_mlp")
 
+        if model_colorcal is not None:
+            x=model_colorcal.calib_RGB_samples_packed(x, img_indices, ray_start_end_idx )
         
-        if model_colorcal is not None and img_indices is not None:
-            if ray_start_end_idx is not None:
-                TIME_START("colorcal")
-                x=model_colorcal.calib_RGB_samples_packed(x, img_indices, ray_start_end_idx )
-                TIME_END("colorcal")
-            else:
-                x=model_colorcal.calib_RGB_rays_reel(x, img_indices, nr_rays )
-
 
         x = self.sigmoid(x)
         
@@ -3185,7 +3148,7 @@ class NerfHash(torch.nn.Module):
 
         return rgb, density
 
-    def get_only_density(self, ray_samples, iter_nr, model_colorcal=None, img_indices=None):
+    def get_only_density(self, ray_samples, iter_nr):
 
 
         # window=self.c2f(iter_nr*0.0001) #helps to converge the radiance of the object in the center and not put radiance on the walls of the bounding box

@@ -6,6 +6,7 @@ import torch.nn.functional as F
 
 # from instant_ngp_2_py.utils.aabb import *
 from hash_sdf  import HashSDF
+from hash_sdf  import RaySamplesPacked
 from skimage import measure
 from easypbr  import *
 
@@ -117,20 +118,25 @@ def sdf_loss_spheres(offsurface_points, offsurface_sdf, offsurface_sdf_gradients
 #sdf multiplier is preferred to be <1 so that we take more conservative steps and don't overshoot the surface
 def sphere_trace(nr_sphere_traces, ray_origins, ray_dirs, model, return_gradients, sdf_multiplier, sdf_converged_tresh, occupancy_grid=None, time_val=None):
 
+    ray_points_entry, ray_t_entry, ray_points_exit, ray_t_exit, is_hit_valid=model.boundary_primitive.ray_intersection(ray_origins, ray_dirs)
+
     #get the entry point of the ray to the aabb. if an occupancy grid is available, use that one instead
     has_occupancy=occupancy_grid is not None
     if has_occupancy:
         ray_samples_packed=occupancy_grid.compute_first_sample_start_of_occupied_regions(ray_origins, ray_dirs, ray_t_entry, ray_t_exit)
-        ray_samples_packed=ray_samples_packed.get_valid_samples() #get only the rays that end up shooting through some occupied region
+        ray_samples_packed=ray_samples_packed.compact_to_valid_samples() #get only the rays that end up shooting through some occupied region
         pos=ray_samples_packed.samples_pos
         dirs=ray_samples_packed.samples_dirs
         #move position slightyl inside the voxel
         voxel_size=1.0/occupancy_grid.get_nr_voxels_per_dim()
         pos=pos+dirs*voxel_size*0.5
     else:
-        ray_points_entry, ray_t_entry, ray_points_exit, ray_t_exit, is_hit_valid=model.boundary_primitive.ray_intersection(ray_origins, ray_dirs)
-        pos=ray_points_entry
-        dirs=ray_dirs
+        ray_samples_packed=RaySamplesPacked(ray_origins.shape[0], ray_origins.shape[0])
+        ray_samples_packed.initialize_with_one_sample_per_ray(ray_points_entry, ray_dirs)
+        # pos=ray_points_entry
+        # dirs=ray_dirs
+        pos=ray_samples_packed.samples_pos
+        dirs=ray_samples_packed.samples_dirs
     pts=pos.clone()
     
     ray_converged_flag=torch.zeros_like(pos)[:,0:1].bool() #all rays start as unconverged
@@ -199,11 +205,15 @@ def sphere_trace(nr_sphere_traces, ray_origins, ray_dirs, model, return_gradient
         sdf_gradients=None
 
     #get also a t value for the ray
-    t_val=(pts-ray_origins).norm(dim=-1, keepdim=True)
+    #we assume that all the ray_origins are the same so that we can also deal with pts being from ray samples compacted which means they don't have the same shape as ray_origins
+    # t_val=(pts-ray_origins).norm(dim=-1, keepdim=True)
+    # t_val=None
 
     # print("pts end is",pts.shape)
 
-    return pts, sdf, sdf_gradients, t_val
+    ray_samples_packed.samples_pos=pts
+
+    return pts, sdf, sdf_gradients, ray_samples_packed
 
 #if the sdf is outside of a threshold, set the ray_end and gradient to zero
 def filter_unconverged_points(points, sdf, sdf_gradients, sdf_converged_tresh=0.01):

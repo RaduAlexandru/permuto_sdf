@@ -632,7 +632,7 @@ update_with_sdf_random_sample_gpu(
     const int nr_voxels_per_dim,
     const torch::PackedTensorAccessor32<int,1,torch::RestrictPtrTraits> point_indices,  
     const float inv_s,
-    const float max_eikonal_abs,
+    // const float max_eikonal_abs,
     const float occupancy_thresh,
     // const bool check_neighbours_density,
     //output

@@ -155,11 +155,14 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
     #model 
     model=NerfHash(3,  boundary_primitive=aabb, nr_iters_for_c2f=hyperparams.foreground_nr_iters_for_c2f ).to("cuda")
     model_bg=NerfHash(4, boundary_primitive=aabb, nr_iters_for_c2f=hyperparams.background_nr_iters_for_c2f ).to("cuda")
-    occupancy_grid=OccupancyGrid(64, 1.0, [0,0,0])
     if hyperparams.use_color_calibration:
         model_colorcal=Colorcal(loader_train.nr_samples(), 0)
     else:
         model_colorcal=None
+    if hyperparams.use_occupancy_grid:
+        occupancy_grid=OccupancyGrid(64, 1.0, [0,0,0])
+    else:
+        occupancy_grid=None
     model.train(phase.grad)
     model_bg.train(phase.grad)
 
