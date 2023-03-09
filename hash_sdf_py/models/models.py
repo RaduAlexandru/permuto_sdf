@@ -238,10 +238,6 @@ class LipshitzMLP(torch.nn.Module):
         # self.layers=[]
         for i in range(len(nr_out_channels_per_layer)):
             cur_out_channels=nr_out_channels_per_layer[i]
-            # weight = torch.nn.Parameter(torch.empty((cur_out_channels, in_channels)))
-            # bias = torch.nn.Parameter(torch.empty(cur_out_channels))
-            # self.weights_per_layer.append(weight)
-            # self.biases_per_layer.append(bias)
             self.layers.append(  torch.nn.Linear(in_channels, cur_out_channels)   )
             in_channels=cur_out_channels
         apply_weight_init_fn(self, leaky_relu_init, negative_slope=0.0)
@@ -251,13 +247,12 @@ class LipshitzMLP(torch.nn.Module):
         #we make each weight separately because we want to add the normalize to it
         self.weights_per_layer=torch.nn.ParameterList()
         self.biases_per_layer=torch.nn.ParameterList()
-        for i in range(len(nr_out_channels_per_layer)):
+        for i in range(len(self.layers)):
             self.weights_per_layer.append( self.layers[i].weight  )
             self.biases_per_layer.append( self.layers[i].bias  )
 
         self.lipshitz_bound_per_layer=torch.nn.ParameterList()
-        for i in range(len(nr_out_channels_per_layer)):
-            # c = torch.nn.Parameter( torch.ones((1))*10 )
+        for i in range(len(self.layers)):
             max_w= torch.max(torch.sum(torch.abs(self.weights_per_layer[i]), dim=1))
             #we actually make the initial value quite large because we don't want at the beggining to hinder the rgb model in any way. A large c means that the scale will be 1
             c = torch.nn.Parameter(  torch.ones((1))*max_w*3 ) 
@@ -275,6 +270,13 @@ class LipshitzMLP(torch.nn.Module):
         absrowsum = torch.sum(torch.abs(w), dim=1)
         scale = torch.minimum(torch.tensor(1.0), softplus_ci/absrowsum)
         return w * scale[:,None]
+
+    def lipshitz_bound_full(self):
+        lipshitz_full=1
+        for i in range(len(self.layers)):
+            lipshitz_full=lipshitz_full*torch.nn.functional.softplus(self.lipshitz_bound_per_layer[i])
+
+        return lipshitz_full
 
     def forward(self, x):
 
@@ -2972,17 +2974,19 @@ class RGB(torch.nn.Module):
        
 
         # with dirs encoded
-        self.mlp= torch.nn.Sequential(
-            torch.nn.Linear(self.encoding.output_dims() + 25 + 3 + geom_feat_size_in, 128),
-            torch.nn.GELU(),
-            torch.nn.Linear(128,128),
-            torch.nn.GELU(),
-            torch.nn.Linear(128,64),
-            torch.nn.GELU(),
-            torch.nn.Linear(64,3)
-        )
-        apply_weight_init_fn(self.mlp, leaky_relu_init, negative_slope=0.0)
-        leaky_relu_init(self.mlp[-1], negative_slope=1.0)
+        # self.mlp= torch.nn.Sequential(
+        #     torch.nn.Linear(self.encoding.output_dims() + 25 + 3 + geom_feat_size_in, 128),
+        #     torch.nn.GELU(),
+        #     torch.nn.Linear(128,128),
+        #     torch.nn.GELU(),
+        #     torch.nn.Linear(128,64),
+        #     torch.nn.GELU(),
+        #     torch.nn.Linear(64,3)
+        # )
+        # apply_weight_init_fn(self.mlp, leaky_relu_init, negative_slope=0.0)
+        # leaky_relu_init(self.mlp[-1], negative_slope=1.0)
+        mlp_in_channels=self.encoding.output_dims() + 25 + 3 + geom_feat_size_in
+        self.mlp=LipshitzMLP(mlp_in_channels, [128,128,64,3], last_layer_linear=True)
 
         self.c2f=permuto_enc.Coarse2Fine(nr_levels)
         self.nr_iters_for_c2f=nr_iters_for_c2f

@@ -462,7 +462,7 @@ def importance_sampling_sdf_model(model_sdf, ray_samples_packed, ray_origins, ra
 	weights_sum, weight_sum_per_sample=VolumeRendering.sum_over_each_ray(ray_samples_packed, weights)
 	# weight_sum_per_sample[weight_sum_per_sample==0]=1e-6 #prevent nans
 	weight_sum_per_sample=torch.clamp(weight_sum_per_sample, min=1e-6 )
-	weights/=weight_sum_per_sample #prevent nans
+	weights/=weight_sum_per_sample #normalize so that cdf sums up to 1
 	cdf=VolumeRendering.compute_cdf(ray_samples_packed, weights)
 	# print("cdf min max is ", cdf.min(), cdf.max())
 	ray_samples_packed_imp=VolumeRendering.importance_sample(ray_origins, ray_dirs, ray_samples_packed, cdf, 16, model_sdf.training)
@@ -480,7 +480,7 @@ def importance_sampling_sdf_model(model_sdf, ray_samples_packed, ray_origins, ra
 	weights = alpha * transmittance
 	weights_sum, weight_sum_per_sample=VolumeRendering.sum_over_each_ray(ray_samples_packed, weights)
 	weight_sum_per_sample=torch.clamp(weight_sum_per_sample, min=1e-6 )
-	weights/=weight_sum_per_sample #prevent nans
+	weights/=weight_sum_per_sample #normalize so that cdf sums up to 1
 	cdf=VolumeRendering.compute_cdf(ray_samples_packed, weights)
 	ray_samples_packed_imp=VolumeRendering.importance_sample(ray_origins, ray_dirs, ray_samples_packed, cdf, 16, model_sdf.training)
 	ray_samples_packed.remove_sdf() #we fuse this with ray_samples_packed_imp but we don't care about fusing the sdf

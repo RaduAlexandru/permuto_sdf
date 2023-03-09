@@ -311,8 +311,9 @@ def init_losses():
     loss_rgb=torch.tensor(0)
     loss_eikonal=torch.tensor(0).float()
     loss_curvature=torch.tensor(0)
+    loss_lipshitz=torch.tensor(0)
 
-    return loss, loss_rgb, loss_eikonal, loss_curvature
+    return loss, loss_rgb, loss_eikonal, loss_curvature, loss_lipshitz
 
 
 

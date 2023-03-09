@@ -60,12 +60,12 @@ config_path=os.path.join( os.path.dirname( os.path.realpath(__file__) ) , '../co
 train_params=TrainParams.create(config_path)    
 class HyperParams:
     lr= 1e-3
-    # nr_iter_sphere_fit=4000
-    nr_iter_sphere_fit=1
+    nr_iter_sphere_fit=4000
+    # nr_iter_sphere_fit=1
     forced_variance_finish_iter=35000
     eikonal_weight=0.04
     curvature_weight=1300.0
-    lipshitz_weight=1.0
+    lipshitz_weight=1e-5
     iter_start_reduce_curv=50000
     iter_finish_reduce_curv=iter_start_reduce_curv+1001
     lr_milestones=[100000,150000,180000,190000]
@@ -654,7 +654,7 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
 
         cb.before_forward_pass()
 
-        loss, loss_rgb, loss_eikonal, loss_curvature=init_losses() 
+        loss, loss_rgb, loss_eikonal, loss_curvature, loss_lipshitz=init_losses() 
 
         iter_nr_for_anneal=get_iter_for_anneal(phases[0].iter_nr, hyperparams.nr_iter_sphere_fit)
         in_process_of_sphere_init=phases[0].iter_nr<hyperparams.nr_iter_sphere_fit
@@ -692,9 +692,11 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
 
             loss_curvature=torch.tensor(0)
             global_weight_curvature=map_range_val(iter_nr_for_anneal, hyperparams.iter_start_reduce_curv, hyperparams.iter_finish_reduce_curv, 1.0, 0.000) #once we are converged onto good geometry we can safely descrease it's weight so we learn also high frequency detail geometry.
+            sdf_shifted, sdf_curvature=model_sdf.get_sdf_and_curvature_1d_precomputed_gradient_normal_based( samples_pos_fg, sdf_gradients, iter_nr_for_anneal)
+            loss_curvature=(torch.clamp(sdf_curvature,max=0.5).abs().view(-1)   ).mean()
             if global_weight_curvature>0.0:
-                sdf_shifted, sdf_curvature=model_sdf.get_sdf_and_curvature_1d_precomputed_gradient_normal_based( samples_pos_fg, sdf_gradients, iter_nr_for_anneal)
-                loss_curvature=(torch.clamp(sdf_curvature,max=0.5).abs().view(-1)   ).mean()
+                # sdf_shifted, sdf_curvature=model_sdf.get_sdf_and_curvature_1d_precomputed_gradient_normal_based( samples_pos_fg, sdf_gradients, iter_nr_for_anneal)
+                # loss_curvature=(torch.clamp(sdf_curvature,max=0.5).abs().view(-1)   ).mean()
                 loss+=loss_curvature* hyperparams.curvature_weight*1e-3 *global_weight_curvature
 
 
@@ -706,13 +708,9 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
                 loss+=loss_offsurface_high_sdf*1e-4
 
             #loss on lipshitz
-            # loss_lipthitz=1
-            # for i in range(len(model_rgb.mlp.layers)):
-            #     loss_lipthitz=loss_lipthitz*torch.nn.functional.softplus(model_rgb.mlp.lipshitz_bound_per_layer[i])
-            # if with_tensorboard:
-            #     cb["tensorboard_callback"].tensorboard_writer.add_scalar('instant_ngp_2/' + phase.name + '/loss_lipthitz', loss_lipthitz.item(), phase.iter_nr)
-            # if iter_nr_for_anneal>=iter_start_curv:
-            #     loss+=loss_lipthitz.mean()*lipshitz_w
+            loss_lipshitz=model_rgb.mlp.lipshitz_bound_full()
+            if iter_nr_for_anneal>=hyperparams.iter_start_reduce_curv:
+                loss+=loss_lipshitz.mean()*lipshitz_weight
 
             if args.with_mask:
                 loss_mask=torch.nn.functional.binary_cross_entropy(weights_sum.clip(1e-3, 1.0 - 1e-3), gt_mask)
@@ -728,7 +726,7 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
                     occupancy_grid.update_with_sdf_random_sample(grid_center_indices, sdf_grid, inv_s.view(-1)[0].item(), 1e-4 )
 
 
-        cb.after_forward_pass(loss=loss.item(), loss_rgb=loss_rgb, loss_sdf_surface_area=0, loss_sdf_grad=0, phase=phase, loss_eikonal=loss_eikonal.item(), loss_curvature=loss_curvature.item(), lr=optimizer.param_groups[0]["lr"]) #visualizes the prediction 
+        cb.after_forward_pass(loss=loss.item(), loss_rgb=loss_rgb, loss_sdf_surface_area=0, loss_sdf_grad=0, phase=phase, loss_eikonal=loss_eikonal.item(), loss_curvature=loss_curvature.item(), loss_lipshitz=loss_lipshitz.item(), lr=optimizer.param_groups[0]["lr"]) #visualizes the prediction 
 
 
         #backward
@@ -737,6 +735,12 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
         loss.backward()
         cb.after_backward_pass()
         optimizer.step()
+
+
+
+        #print every once in a while 
+        if phase.iter_nr%1000==0:
+            print("phase.iter_nr",  phase.iter_nr, "loss ", loss.item() )
 
 
         ###visualize
