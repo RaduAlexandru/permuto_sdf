@@ -232,6 +232,7 @@ class LipshitzMLP(torch.nn.Module):
         super(LipshitzMLP, self).__init__()
 
 
+        self.last_layer_linear=last_layer_linear
      
 
         self.layers=torch.nn.ParameterList()
@@ -260,7 +261,6 @@ class LipshitzMLP(torch.nn.Module):
 
 
 
-        self.last_layer_linear=True
 
 
 
@@ -294,8 +294,6 @@ class LipshitzMLP(torch.nn.Module):
 
             if is_last_layer and self.last_layer_linear:
                 pass
-                # print("lat layer")
-                # print("weight min max", weight.min(), weight.max())
             else:
                 x=torch.nn.functional.gelu(x)
 
@@ -3034,6 +3032,24 @@ class RGB(torch.nn.Module):
         models_path=os.path.join(root_folder,"checkpoints/", experiment_name, str(iter_nr), "models")
         os.makedirs(models_path, exist_ok=True)
         torch.save(self.state_dict(), os.path.join(models_path, "rgb_model.pt")  )
+
+    def parameters_only_encoding(self):
+        params=[]
+        for name, param in self.encoding.named_parameters():
+            if "lattice_values" in name:
+                params.append(param)
+        return params
+
+    def parameters_all_without_encoding(self):
+        params=[]
+        for name, param in self.named_parameters():
+            if "lattice_values" in name:
+                pass
+            else:
+                params.append(param)
+        return params
+                
+
 
 ###################NERF ################################
 class NerfHash(torch.nn.Module):

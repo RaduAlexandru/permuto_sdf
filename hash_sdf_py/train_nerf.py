@@ -169,7 +169,7 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
     params = list(model.parameters()) + list(model_bg.parameters()) 
     if model_colorcal is not None:
         params+= list(model_colorcal.parameters()) 
-    optimizer = torch.optim.AdamW (params, amsgrad=False,  betas=(0.9, 0.99), eps=1e-15, lr=hyperparams.lr)
+    optimizer = torch.optim.AdamW (params, amsgrad=False,  betas=(0.9, 0.99), eps=1e-15,  weight_decay=0.0, lr=hyperparams.lr)
 
     first_time_getting_control=True
     is_in_training_loop=True
