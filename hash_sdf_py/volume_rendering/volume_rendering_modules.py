@@ -104,10 +104,10 @@ class SingleVarianceNetwork(torch.nn.Module):
         if forced_variance!=None:
             self.is_variance_forced=True
             self.last_variance=forced_variance
-            return torch.exp(torch.tensor(forced_variance) * 10.0), forced_variance
+            return torch.exp(torch.tensor(forced_variance) * 10.0)
         else:
             self.last_variance=self.variance
-            return torch.exp(self.variance * 10.0), self.variance
+            return torch.exp(self.variance * 10.0) 
     
     def get_variance_item(self):
         return self.last_variance
@@ -124,6 +124,8 @@ class VolumeRenderingNeus(torch.nn.Module):
         self.integrator_module=IntegrateWithWeightsModule()
         self.sum_ray_module=SumOverRayModule()
 
+        self.last_inv_s=None
+
     def compute_weights(self, ray_samples_packed, sdf, gradients, cos_anneal_ratio, forced_variance=None ):
 
         nr_samples_total=ray_samples_packed.samples_pos.shape[0]
@@ -132,8 +134,9 @@ class VolumeRenderingNeus(torch.nn.Module):
 
 
         #single parameter 
-        inv_s, inv_s_before_exp = self.deviation_network(forced_variance )           # Single parameter
+        inv_s = self.deviation_network(forced_variance )           # Single parameter
         inv_s=inv_s.clip(1e-6, 1e6)
+        self.last_inv_s=inv_s
 
         true_cos = (ray_samples_packed.samples_dirs * gradients).sum(-1, keepdim=True)
 
@@ -175,7 +178,8 @@ class VolumeRenderingNeus(torch.nn.Module):
 
         return integrated
 
-
+    def get_last_inv_s(self):
+        return self.last_inv_s.view(-1)
 
 
 

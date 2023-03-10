@@ -8,6 +8,7 @@ import os
 import numpy as np
 import time
 import argparse
+import math
 
 import easypbr
 from easypbr  import *
@@ -42,6 +43,7 @@ from hash_sdf_py.utils.common_utils import colormap
 from hash_sdf_py.utils.common_utils import create_dataloader
 from hash_sdf_py.utils.common_utils import create_bb_for_dataset
 from hash_sdf_py.utils.common_utils import create_bb_mesh
+from hash_sdf_py.utils.common_utils import summary
 from hash_sdf_py.utils.hahsdf_utils import get_frames_cropped
 from hash_sdf_py.utils.hahsdf_utils import init_losses
 from hash_sdf_py.utils.hahsdf_utils import get_iter_for_anneal
@@ -325,28 +327,44 @@ def run_net(args, tensor_reel, hyperparams, ray_origins, ray_dirs, img_indices, 
         TIME_START("create_samples")
         fg_ray_samples_packed, bg_ray_samples_packed = create_samples(args, hyperparams, ray_origins, ray_dirs, model_sdf.training, occupancy_grid, model_sdf.boundary_primitive)
         
-        if hyperparams.do_importance_sampling:
+        if hyperparams.do_importance_sampling and fg_ray_samples_packed.samples_pos.shape[0]!=0:
             fg_ray_samples_packed=importance_sampling_sdf_model(model_sdf, fg_ray_samples_packed, ray_origins, ray_dirs, ray_t_exit, iter_nr_for_anneal)
         TIME_END("create_samples") #4ms in hashsdf
 
+    # print("fg_ray_samples_packed.samples_pos.shape",fg_ray_samples_packed.samples_pos.shape)
 
     TIME_START("render_fg")    
-    #foreground 
-    #get sdf
-    sdf, sdf_gradients, geom_feat=model_sdf.get_sdf_and_gradient(fg_ray_samples_packed.samples_pos, iter_nr_for_anneal)
-    #get rgb
-    rgb_samples = model_rgb( fg_ray_samples_packed.samples_pos, fg_ray_samples_packed.samples_dirs, sdf_gradients, geom_feat, iter_nr_for_anneal, model_colorcal, img_indices, fg_ray_samples_packed.ray_start_end_idx)
-    #volumetric integration
-    weights, weights_sum, bg_transmittance, inv_s = model_rgb.volume_renderer_neus.compute_weights(fg_ray_samples_packed, sdf, sdf_gradients, cos_anneal_ratio, forced_variance) #neus
-    pred_rgb=model_rgb.volume_renderer_neus.integrate(fg_ray_samples_packed, rgb_samples, weights)
+    if fg_ray_samples_packed.samples_pos.shape[0]==0: #if we actualyl have samples for this batch fo rays
+        pred_rgb=torch.zeros_like(ray_origins)
+        pred_normals=torch.zeros_like(ray_origins)
+        sdf_gradients=torch.zeros_like(ray_origins)
+        weights_sum=torch.zeros_like(ray_origins)[:,0:1]
+        bg_transmittance=torch.ones_like(ray_origins)[:,0:1]
+    else:
+        #foreground 
+        #get sdf
+        sdf, sdf_gradients, geom_feat=model_sdf.get_sdf_and_gradient(fg_ray_samples_packed.samples_pos, iter_nr_for_anneal)
+        #get rgb
+        rgb_samples = model_rgb( fg_ray_samples_packed.samples_pos, fg_ray_samples_packed.samples_dirs, sdf_gradients, geom_feat, iter_nr_for_anneal, model_colorcal, img_indices, fg_ray_samples_packed.ray_start_end_idx)
+        #volumetric integration
+        weights, weights_sum, bg_transmittance, inv_s = model_rgb.volume_renderer_neus.compute_weights(fg_ray_samples_packed, sdf, sdf_gradients, cos_anneal_ratio, forced_variance) #neus
+        pred_rgb=model_rgb.volume_renderer_neus.integrate(fg_ray_samples_packed, rgb_samples, weights)
+
+        #compute also normal by integrating the gradient
+        grad_integrated_per_ray=model_rgb.volume_renderer_neus.integrate(fg_ray_samples_packed, sdf_gradients, weights)
+        pred_normals=F.normalize(grad_integrated_per_ray, dim=1)
     TIME_END("render_fg") #7.2ms in hashsdf   
 
+
+
+    # print("bg_ray_samples_packed.samples_pos_4d",bg_ray_samples_packed.samples_pos_4d)
 
     TIME_START("render_bg")    
     #run nerf bg
     if args.with_mask:
         pred_rgb_bg=None
-    else: #have to model the background
+    # else: #have to model the background
+    elif bg_ray_samples_packed.samples_pos_4d.shape[0]!=0: #have to model the background
         #compute rgb and density
         rgb_samples_bg, density_samples_bg=model_bg( bg_ray_samples_packed.samples_pos_4d, bg_ray_samples_packed.samples_dirs, iter_nr_for_anneal, model_colorcal, img_indices, ray_start_end_idx=bg_ray_samples_packed.ray_start_end_idx) 
         #volumetric integration
@@ -360,63 +378,104 @@ def run_net(args, tensor_reel, hyperparams, ray_origins, ray_dirs, img_indices, 
 
 
 
-    return pred_rgb, sdf_gradients, weights, weights_sum, fg_ray_samples_packed, inv_s  
+    # return pred_rgb, sdf_gradients, weights, weights_sum, fg_ray_samples_packed
+    return pred_rgb, pred_rgb_bg, pred_normals, sdf_gradients, weights_sum, fg_ray_samples_packed
 
-
-
-def run_net_batched(frame, chunk_size,   args, tensor_reel,  min_dist_between_samples, max_nr_samples_per_ray, model, model_rgb, model_bg, model_colorcal, lattice, lattice_bg, iter_nr_for_anneal, aabb, cos_anneal_ratio, forced_variance, nr_samples_bg,  use_occupancy_grid, occupancy_grid, do_imp_sampling, return_features=False):
-    ray_origins_full, ray_dirs_full=model.create_rays(frame, rand_indices=None)
+#does forward pass through the model but breaks the rays up into chunks so that we don't run out of memory. Useful for rendering a full img
+def run_net_in_chunks(frame, chunk_size, args, tensor_reel, hyperparams, model_sdf, model_rgb, model_bg, occupancy_grid, iter_nr_for_anneal, cos_anneal_ratio, forced_variance):
+    ray_origins_full, ray_dirs_full=model_rgb.create_rays(frame, rand_indices=None)
     nr_chunks=math.ceil( ray_origins_full.shape[0]/chunk_size)
     ray_origins_list=torch.chunk(ray_origins_full, nr_chunks)
     ray_dirs_list=torch.chunk(ray_dirs_full, nr_chunks)
     pred_rgb_list=[]
+    pred_rgb_bg_list=[]
     pred_weights_sum_list=[]
     pred_normals_list=[]
-    pred_depth_list=[]
-    pred_feat_list=[]
     for i in range(len(ray_origins_list)):
         ray_origins=ray_origins_list[i]
         ray_dirs=ray_dirs_list[i]
         nr_rays_chunk=ray_origins.shape[0]
     
-        ray_points_entry, ray_t_entry, ray_points_exit, ray_t_exit, does_ray_intersect_box=aabb.ray_intersection(ray_origins, ray_dirs)
-
-        pred_rgb, pts, sdf, sdf_gradients, weights, weights_sum, inv_s, pred_normals, pred_depth, nr_samples_per_ray, pred_feat=run_net(args, tensor_reel, nr_rays_chunk, ray_origins, ray_dirs, None, min_dist_between_samples, max_nr_samples_per_ray, model, model_rgb, model_bg, model_colorcal, lattice, lattice_bg, iter_nr_for_anneal, aabb,  cos_anneal_ratio, forced_variance, nr_samples_bg, use_occupancy_grid, occupancy_grid, do_imp_sampling, return_features=return_features)
+        #run net 
+        # pred_rgb, pred_rgb_bg, weights_sum, samples_fg=run_net(args, tensor_reel, hyperparams, ray_origins, ray_dirs, None, model, model_bg, None, occupancy_grid, iter_nr) 
+        pred_rgb, pred_rgb_bg, pred_normals, sdf_gradients, weights_sum, fg_ray_samples_packed  =run_net(args, tensor_reel, hyperparams, ray_origins, ray_dirs, None, model_sdf, model_rgb, model_bg, None, occupancy_grid, iter_nr_for_anneal, cos_anneal_ratio, forced_variance)
 
 
         #accumulat the rgb and weights_sum
         pred_rgb_list.append(pred_rgb.detach())
-        pred_weights_sum_list.append(weights_sum.detach())
+        pred_rgb_bg_list.append(pred_rgb_bg.detach()) if pred_rgb_bg is not None   else None
         pred_normals_list.append(pred_normals.detach())
-        pred_depth_list.append(pred_depth.detach())
-        if return_features:
-            pred_feat_list.append(pred_feat.detach())
+        pred_weights_sum_list.append(weights_sum.detach())
 
 
     #concat
     pred_rgb=torch.cat(pred_rgb_list,0)
+    pred_rgb_bg=torch.cat(pred_rgb_bg_list,0) if pred_rgb_bg_list else None
     pred_weights_sum=torch.cat(pred_weights_sum_list,0)
     pred_normals=torch.cat(pred_normals_list,0)
-    pred_depth=torch.cat(pred_depth_list,0)
-    if return_features:
-        pred_features=torch.cat(pred_feat_list,0)
 
     #reshape in imgs
-    # print("pred_rgb is ", pred_rgb.shape)
-    # print("pred_normals is ", pred_normals.shape)
     pred_rgb_img=lin2nchw(pred_rgb, frame.height, frame.width)
+    pred_rgb_bg_img=lin2nchw(pred_rgb_bg, frame.height, frame.width)   if pred_rgb_bg_list else None
     pred_weights_sum_img=lin2nchw(pred_weights_sum, frame.height, frame.width)
     pred_normals_img=lin2nchw(pred_normals, frame.height, frame.width)
-    pred_depth_img=lin2nchw(pred_depth, frame.height, frame.width)
-    if return_features:
-        pred_features_img=lin2nchw(pred_features, frame.height, frame.width)
-    else:
-        pred_features_img=None
-    # pred_normals_img=(pred_normals_img+1)*0.5
 
-    # show_points(pts,"pts")
+    return pred_rgb_img, pred_rgb_bg_img, pred_normals_img, pred_weights_sum_img
+   
 
-    return pred_rgb_img, pred_weights_sum_img, pred_normals_img, pred_depth_img, pred_features_img
+# def run_net_batched(frame, chunk_size,   args, tensor_reel,  min_dist_between_samples, max_nr_samples_per_ray, model, model_rgb, model_bg, model_colorcal, lattice, lattice_bg, iter_nr_for_anneal, aabb, cos_anneal_ratio, forced_variance, nr_samples_bg,  use_occupancy_grid, occupancy_grid, do_imp_sampling, return_features=False):
+#     ray_origins_full, ray_dirs_full=model.create_rays(frame, rand_indices=None)
+#     nr_chunks=math.ceil( ray_origins_full.shape[0]/chunk_size)
+#     ray_origins_list=torch.chunk(ray_origins_full, nr_chunks)
+#     ray_dirs_list=torch.chunk(ray_dirs_full, nr_chunks)
+#     pred_rgb_list=[]
+#     pred_weights_sum_list=[]
+#     pred_normals_list=[]
+#     pred_depth_list=[]
+#     pred_feat_list=[]
+#     for i in range(len(ray_origins_list)):
+#         ray_origins=ray_origins_list[i]
+#         ray_dirs=ray_dirs_list[i]
+#         nr_rays_chunk=ray_origins.shape[0]
+    
+#         ray_points_entry, ray_t_entry, ray_points_exit, ray_t_exit, does_ray_intersect_box=aabb.ray_intersection(ray_origins, ray_dirs)
+
+#         pred_rgb, pts, sdf, sdf_gradients, weights, weights_sum, inv_s, pred_normals, pred_depth, nr_samples_per_ray, pred_feat=run_net(args, tensor_reel, nr_rays_chunk, ray_origins, ray_dirs, None, min_dist_between_samples, max_nr_samples_per_ray, model, model_rgb, model_bg, model_colorcal, lattice, lattice_bg, iter_nr_for_anneal, aabb,  cos_anneal_ratio, forced_variance, nr_samples_bg, use_occupancy_grid, occupancy_grid, do_imp_sampling, return_features=return_features)
+
+
+#         #accumulat the rgb and weights_sum
+#         pred_rgb_list.append(pred_rgb.detach())
+#         pred_weights_sum_list.append(weights_sum.detach())
+#         pred_normals_list.append(pred_normals.detach())
+#         pred_depth_list.append(pred_depth.detach())
+#         if return_features:
+#             pred_feat_list.append(pred_feat.detach())
+
+
+#     #concat
+#     pred_rgb=torch.cat(pred_rgb_list,0)
+#     pred_weights_sum=torch.cat(pred_weights_sum_list,0)
+#     pred_normals=torch.cat(pred_normals_list,0)
+#     pred_depth=torch.cat(pred_depth_list,0)
+#     if return_features:
+#         pred_features=torch.cat(pred_feat_list,0)
+
+#     #reshape in imgs
+#     # print("pred_rgb is ", pred_rgb.shape)
+#     # print("pred_normals is ", pred_normals.shape)
+#     pred_rgb_img=lin2nchw(pred_rgb, frame.height, frame.width)
+#     pred_weights_sum_img=lin2nchw(pred_weights_sum, frame.height, frame.width)
+#     pred_normals_img=lin2nchw(pred_normals, frame.height, frame.width)
+#     pred_depth_img=lin2nchw(pred_depth, frame.height, frame.width)
+#     if return_features:
+#         pred_features_img=lin2nchw(pred_features, frame.height, frame.width)
+#     else:
+#         pred_features_img=None
+#     # pred_normals_img=(pred_normals_img+1)*0.5
+
+#     # show_points(pts,"pts")
+
+#     return pred_rgb_img, pred_weights_sum_img, pred_normals_img, pred_depth_img, pred_features_img
 
 def run_net_sphere_traced_batched(frame, chunk_size,   args, tensor_reel,  min_dist_between_samples, max_nr_samples_per_ray, model, model_rgb, model_bg, model_colorcal, lattice, lattice_bg, iter_nr_for_anneal, aabb, cos_anneal_ratio, forced_variance, nr_samples_bg,  use_occupancy_grid, occupancy_grid, nr_iters_sphere_trace, sphere_trace_agressiveness, sphere_trace_converged_threshold, sphere_trace_push_in_gradient_dir, return_features=False):
     ray_origins_full, ray_dirs_full=model.create_rays(frame, rand_indices=None)
@@ -663,7 +722,6 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
     else:
         optimizer = torch.optim.AdamW (params, amsgrad=False,  betas=(0.9, 0.99), eps=1e-15, weight_decay=0.0, lr=hyperparams.lr)
     scheduler_lr_decay= MultiStepLR(optimizer, milestones=hyperparams.lr_milestones, gamma=0.3, verbose=False)    
-    scheduler_warmup = GradualWarmupScheduler(optimizer, multiplier=1, total_epoch=3000, after_scheduler=scheduler_lr_decay) #anneal over total_epoch iterations
 
 
     first_time_getting_control=True
@@ -701,7 +759,8 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
 
 
             TIME_START("run_net")
-            pred_rgb, sdf_gradients, weights, weights_sum, fg_ray_samples_packed, inv_s  =run_net(args, tensor_reel, hyperparams, ray_origins, ray_dirs, img_indices, model_sdf, model_rgb, model_bg, model_colorcal, occupancy_grid, iter_nr_for_anneal,  cos_anneal_ratio, forced_variance)
+            # pred_rgb, sdf_gradients, weights, weights_sum, fg_ray_samples_packed, inv_s  =run_net(args, tensor_reel, hyperparams, ray_origins, ray_dirs, img_indices, model_sdf, model_rgb, model_bg, model_colorcal, occupancy_grid, iter_nr_for_anneal,  cos_anneal_ratio, forced_variance)
+            pred_rgb, pred_rgb_bg, pred_normals, sdf_gradients, weights_sum, fg_ray_samples_packed  =run_net(args, tensor_reel, hyperparams, ray_origins, ray_dirs, img_indices, model_sdf, model_rgb, model_bg, model_colorcal, occupancy_grid, iter_nr_for_anneal,  cos_anneal_ratio, forced_variance)
             TIME_END("run_net")
             
 
@@ -747,13 +806,12 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
                 loss+=loss_mask*hyperparams.mask_weight
 
 
-
             with torch.set_grad_enabled(False):
                 #update occupancy
                 if phase.iter_nr%8==0 and hyperparams.use_occupancy_grid:
                     grid_centers_random, grid_center_indices=occupancy_grid.compute_random_sample_of_grid_points(256*256*4,True)
                     sdf_grid,_=model_sdf( grid_centers_random, iter_nr_for_anneal) 
-                    occupancy_grid.update_with_sdf_random_sample(grid_center_indices, sdf_grid, inv_s.view(-1)[0].item(), 1e-4 )
+                    occupancy_grid.update_with_sdf_random_sample(grid_center_indices, sdf_grid, model_rgb.volume_renderer_neus.get_last_inv_s().item(), 1e-4 )
 
                 #adjust nr_rays_to_create based on how many samples we have in total
                 cur_nr_samples=fg_ray_samples_packed.samples_pos.shape[0]
@@ -780,6 +838,8 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
         TIME_END("backward") #takes 30ms in ingp2, 28ms in hashsdf
         cb.after_backward_pass()
         optimizer.step()
+        if just_finished_sphere_fit:
+            scheduler_warmup = GradualWarmupScheduler(optimizer, multiplier=1, total_epoch=3000, after_scheduler=scheduler_lr_decay) 
         if not in_process_of_sphere_init:
             # scheduler_lr_decay.step()
             scheduler_warmup.step() #this will call the scheduler for the decay
@@ -808,8 +868,8 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
                 if not in_process_of_sphere_init:
                     show_points(fg_ray_samples_packed.samples_pos,"samples_pos_fg")
 
-                vis_width=50
-                vis_height=50
+                vis_width=150
+                vis_height=150
                 if first_time_getting_control or ngp_gui.m_control_view:
                     first_time_getting_control=False
                     frame=Frame()
@@ -854,16 +914,24 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
 
 
                 #do it volumetrically 
-                pred_rgb, sdf_gradients, weights, weights_sum, fg_ray_samples_packed, inv_s  =run_net(args, tensor_reel, hyperparams, ray_origins, ray_dirs, None, model_sdf, model_rgb, model_bg, None, occupancy_grid, iter_nr_for_anneal, cos_anneal_ratio, forced_variance)
-                #vis normal
-                ray_end_gradient_integrated=model_rgb.volume_renderer_neus.integrate(fg_ray_samples_packed, sdf_gradients, weights)
-                ray_end_normal=F.normalize(ray_end_gradient_integrated, dim=1)
-                ray_end_normal_vis=(ray_end_normal+1.0)*0.5
-                ray_end_normal_tex=ray_end_normal_vis.view(vis_height, vis_width, 3)
-                ray_end_normal_img=tex2img(ray_end_normal_tex)
-                Gui.show(tensor2mat(ray_end_normal_img), "ray_end_normal_img")
+                # pred_rgb, pred_rgb_bg, pred_normals, sdf_gradients, weights_sum, fg_ray_samples_packed  =run_net(args, tensor_reel, hyperparams, ray_origins, ray_dirs, None, model_sdf, model_rgb, model_bg, None, occupancy_grid, iter_nr_for_anneal, cos_anneal_ratio, forced_variance)
+                # #vis normal
+                # pred_normals_vis=(pred_normals+1.0)*0.5
+                # pred_normals_img=lin2nchw(pred_normals_vis, vis_height, vis_width)
+                # Gui.show(tensor2mat(pred_normals_img), "pred_normals_img")
+                # #vis RGB
+                # pred_rgb_img=lin2nchw(pred_rgb, vis_height, vis_width)
+                # Gui.show(tensor2mat(pred_rgb_img).rgb2bgr(), "pred_rgb_img")
+
+
+                #do it volumetrially but in chunks
+                chunk_size=50*50
+                pred_rgb_img, pred_rgb_bg_img, pred_normals_img, pred_weights_sum_img=run_net_in_chunks(frame, chunk_size, args, tensor_reel, hyperparams, model_sdf, model_rgb, model_bg, occupancy_grid, iter_nr_for_anneal, cos_anneal_ratio, forced_variance)
+                #vis normals
+                pred_normals_img_vis=(pred_normals_img+1.0)*0.5
+                pred_normals_img_vis_alpha=torch.cat([pred_normals_img_vis,pred_weights_sum_img],1)
+                Gui.show(tensor2mat(pred_normals_img_vis_alpha).rgba2bgra(), "pred_normals_img_vis")
                 #vis RGB
-                pred_rgb_img=lin2nchw(pred_rgb, vis_height, vis_width)
                 Gui.show(tensor2mat(pred_rgb_img).rgb2bgr(), "pred_rgb_img")
 
 
