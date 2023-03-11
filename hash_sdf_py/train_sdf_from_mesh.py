@@ -154,7 +154,7 @@ def run():
 
 
                 #sphere trace those pixels
-                ray_end, ray_end_sdf, ray_end_gradient, geom_feat_end, traced_samples_packed=sphere_trace(10, ray_origins, ray_dirs, model, return_gradients=True, sdf_multiplier=1.0, sdf_converged_tresh=0.005)
+                ray_end, ray_end_sdf, ray_end_gradient, geom_feat_end, traced_samples_packed=sphere_trace(20, ray_origins, ray_dirs, model, return_gradients=True, sdf_multiplier=0.9, sdf_converged_tresh=0.0002)
                 ray_end_converged, ray_end_gradient_converged, is_converged=filter_unconverged_points(ray_end, ray_end_sdf, ray_end_gradient) #leaves only the points that are converged
                 ray_end_normal=F.normalize(ray_end_gradient, dim=1)
                 ray_end_normal_vis=(ray_end_normal+1.0)*0.5

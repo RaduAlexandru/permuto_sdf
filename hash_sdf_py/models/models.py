@@ -256,7 +256,7 @@ class LipshitzMLP(torch.nn.Module):
         for i in range(len(self.layers)):
             max_w= torch.max(torch.sum(torch.abs(self.weights_per_layer[i]), dim=1))
             #we actually make the initial value quite large because we don't want at the beggining to hinder the rgb model in any way. A large c means that the scale will be 1
-            c = torch.nn.Parameter(  torch.ones((1))*max_w*3 ) 
+            c = torch.nn.Parameter(  torch.ones((1))*max_w*2 ) 
             self.lipshitz_bound_per_layer.append(c)
 
 
@@ -2698,6 +2698,7 @@ class SDF(torch.nn.Module):
 
        
         window=self.c2f( map_range_val(iter_nr, 0.0, self.nr_iters_for_c2f, 0.3, 1.0   ) )
+
      
         point_features=self.encoding(points, window.view(-1))
         sdf_and_feat=self.mlp_sdf(point_features)

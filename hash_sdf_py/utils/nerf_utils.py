@@ -697,8 +697,8 @@ def create_rays_from_frame(frame, rand_indices):
 
 	#get from cam_coords to world_coords
 	tf_world_cam=frame.tf_cam_world.inverse()
-	R=torch.from_numpy( tf_world_cam.linear() ).to("cuda").float()
-	t=torch.from_numpy( tf_world_cam.translation() ).to("cuda").view(1,3).float()
+	R=torch.from_numpy( tf_world_cam.linear().copy() ).to("cuda").float()
+	t=torch.from_numpy( tf_world_cam.translation().copy() ).to("cuda").view(1,3).float()
 	pixels_selected_world_coords=torch.matmul(R, pixels_selected_cam_coords.transpose(0,1).contiguous() ).transpose(0,1).contiguous()  + t
 	#get direction
 	ray_dirs = pixels_selected_world_coords-t

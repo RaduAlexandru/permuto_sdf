@@ -146,7 +146,7 @@ def run():
         ngp_gui=NGPGui.create(view)
         view.m_camera.from_string(" 1.16039 0.262138 0.893686  -0.06185  0.470286 0.0330563 0.879719 -0.0700771  0.0530106  0.0714673 60 0.0502494 5024.94")
 
-    experiment_name="sdf_def"
+    experiment_name="4d_sdf_def"
 
 
     #create bounding box for the scene 
@@ -247,7 +247,7 @@ def run():
                 
 
                 #sphere trace those pixels
-                ray_end, ray_end_sdf, ray_end_gradient, geom_feat_end, traced_samples_packed=sphere_trace(15, ray_origins, ray_dirs, model, return_gradients=True, sdf_multiplier=0.7, sdf_converged_tresh=0.005, time_val=ngp_gui.m_time_val)
+                ray_end, ray_end_sdf, ray_end_gradient, geom_feat_end, traced_samples_packed=sphere_trace(20, ray_origins, ray_dirs, model, return_gradients=True, sdf_multiplier=0.7, sdf_converged_tresh=0.0002, time_val=ngp_gui.m_time_val)
                 ray_end_converged, ray_end_gradient_converged, is_converged=filter_unconverged_points(ray_end, ray_end_sdf, ray_end_gradient) #leaves only the points that are converged
                 ray_end_normal=F.normalize(ray_end_gradient, dim=1)
                 ray_end_normal_vis=(ray_end_normal+1.0)*0.5
