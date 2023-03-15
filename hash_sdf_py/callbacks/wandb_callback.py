@@ -26,6 +26,3 @@ class WandBCallback(Callback):
 
     def epoch_ended(self, phase, **kwargs):
         pass
-        # mean_iou=phase.scores.avg_class_iou(print_per_class_iou=False)
-        # self.tensorboard_writer.add_scalar('instant_ngp_2/' + phase.name + '/mean_iou', mean_iou, phase.epoch_nr)
-        # self.vis.log(phase.epoch_nr, mean_iou, "iou_"+phase.name,  "loss_"+phase.name+"_"+self.experiment_name, smooth=False,  show_every=1)

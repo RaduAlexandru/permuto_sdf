@@ -9,8 +9,6 @@ class ViewerCallback(Callback):
 
     def after_forward_pass(self,**kwargs):
         pass
-        # self.show_predicted_cloud(pred_softmax, cloud)
-        # self.show_difference_cloud(pred_softmax, cloud)
 
 
     
