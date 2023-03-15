@@ -69,7 +69,7 @@ config_path=os.path.join( os.path.dirname( os.path.realpath(__file__) ) , '../co
 
 # #initialize the parameters used for training
 train_params=TrainParams.create(config_path)    
-class HyperParams:
+class HyperParamsHashSDF:
     lr= 1e-3
     nr_iter_sphere_fit=4000
     forced_variance_finish_iter=35000
@@ -95,7 +95,7 @@ class HyperParams:
     rgb_nr_iters_for_c2f=1
     background_nr_iters_for_c2f=1
     target_nr_of_samples=512*(64+16+16)
-hyperparams=HyperParams()
+hyperparams=HyperParamsHashSDF()
 
 
 
@@ -432,7 +432,7 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
 
 
         #save checkpoint
-        if train_params.save_checkpoint() and phase.iter_nr%500==0:
+        if train_params.save_checkpoint() and phase.iter_nr%5000==0:
             model_sdf.save(checkpoint_path, experiment_name, phase.iter_nr)
             model_rgb.save(checkpoint_path, experiment_name, phase.iter_nr)
             model_bg.save(checkpoint_path, experiment_name, phase.iter_nr, additional_name="_bg")

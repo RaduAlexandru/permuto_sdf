@@ -17,8 +17,13 @@ public:
     bool with_visdom();
     bool with_tensorboard();
     bool with_wandb();
-    // float lr();
     bool save_checkpoint();
+
+    //setters
+    void set_with_visdom(const bool val);
+    void set_with_tensorboard(const bool val);
+    void set_with_wandb(const bool val);
+    void set_save_checkpoint(const bool val);
 
 
 private:

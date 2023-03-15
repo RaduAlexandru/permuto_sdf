@@ -155,6 +155,11 @@ PYBIND11_MODULE(hash_sdf, m) {
     // .def("weight_decay",  &TrainParams::weight_decay )
     .def("save_checkpoint",  &TrainParams::save_checkpoint )
     // .def("checkpoint_path",  &TrainParams::checkpoint_path )
+    //setters
+    .def("set_with_visdom",  &TrainParams::set_with_visdom )
+    .def("set_with_tensorboard",  &TrainParams::set_with_tensorboard )
+    .def("set_with_wandb",  &TrainParams::set_with_wandb )
+    .def("set_save_checkpoint",  &TrainParams::set_save_checkpoint )
     ;
 
     // //EvalParams

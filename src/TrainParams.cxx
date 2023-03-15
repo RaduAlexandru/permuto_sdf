@@ -71,5 +71,18 @@ bool TrainParams::save_checkpoint(){
 //     return m_checkpoint_path;
 // }
 
+void TrainParams::set_with_visdom(const bool val){
+    m_with_visdom=val;
+}
+void TrainParams::set_with_tensorboard(const bool val){
+    m_with_tensorboard=val;
+}
+void TrainParams::set_with_wandb(const bool val){
+    m_with_wandb=val;
+}
+void TrainParams::set_save_checkpoint(const bool val){
+    m_save_checkpoint=val;
+}
+
 
 
