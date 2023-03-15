@@ -2,6 +2,6 @@
 #it's then easy from another file to do import data_paths and use data_paths.dtu[scene_nr]
 
 data_paths={
-    "comp_small": "/media/rosu/Data/data",
-    "comp_big": "/home/user/rosu/data/"
+    "comp_1": "/media/rosu/Data/data",
+    "comp_2": "/home/user/rosu/data/"
 }

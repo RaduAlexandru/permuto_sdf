@@ -1,8 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-# from easypbr  import *
-# from dataloaders import *
 import sys
 import math
 import functools
@@ -26,7 +24,6 @@ from torch.nn.modules.module import _addindent
 from easypbr  import *
 
 from hash_sdf_py.utils.aabb import *
-# from instant_ngp_2_py.utils.sphere import *
 from hash_sdf  import Sphere
 
 from hash_sdf_py.paths.data_paths import *
@@ -66,10 +63,8 @@ def cosine_easing_window(num_freqs, alpha):
 
 
 
-####from CARE-> utils->math.py
 
 eps = 1e-8
-
 
 #wraps module, and changes them to become a torchscrip version of them during inference
 class TorchScriptTraceWrapper(torch.nn.Module):
@@ -248,21 +243,6 @@ def colormap(values, colormap_name):
 
     return colors
     
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 def check_args_shadowing(name, method, arg_names):

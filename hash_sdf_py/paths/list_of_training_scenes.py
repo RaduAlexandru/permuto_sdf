@@ -7,21 +7,21 @@ datasets={
         "head",
     },
     "dtu":{
-        "dtu_scan105", #finish
-        "dtu_scan106",  #finish
-        "dtu_scan110",  #finished
-        "dtu_scan114",  #finished 
-        "dtu_scan118",  #finished
-        "dtu_scan122",  #finished 
-        "dtu_scan24",   #finished 
-        "dtu_scan37", #finished   
-        "dtu_scan40",  #finished
-        "dtu_scan55",  #finish
-        "dtu_scan63", #finish  
-        "dtu_scan65",  #finish
-        "dtu_scan69",  #broke 
-        "dtu_scan83",  #finish
-        "dtu_scan97"  #finish
+        "dtu_scan105", 
+        "dtu_scan106",  
+        "dtu_scan110",  
+        "dtu_scan114",  
+        "dtu_scan118",  
+        "dtu_scan122",  
+        "dtu_scan24",   
+        "dtu_scan37", 
+        "dtu_scan40",  
+        "dtu_scan55",  
+        "dtu_scan63", 
+        "dtu_scan65",  
+        "dtu_scan69",  
+        "dtu_scan83",  
+        "dtu_scan97"  
     },
     "bmvs":{
         "bmvs_bear",  

@@ -350,7 +350,8 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
             #curvature loss
             loss_curvature=torch.tensor(0)
             global_weight_curvature=map_range_val(iter_nr_for_anneal, hyperparams.iter_start_reduce_curv, hyperparams.iter_finish_reduce_curv, 1.0, 0.000) #once we are converged onto good geometry we can safely descrease it's weight so we learn also high frequency detail geometry.
-            if global_weight_curvature>0.0:
+            # if global_weight_curvature>0.0:
+            if True:
                 sdf_shifted, sdf_curvature=model_sdf.get_sdf_and_curvature_1d_precomputed_gradient_normal_based( fg_ray_samples_packed.samples_pos, sdf_gradients, iter_nr_for_anneal)
                 loss_curvature=(torch.clamp(sdf_curvature,max=0.5).abs().view(-1)   ).mean() 
                 loss+=loss_curvature* hyperparams.curvature_weight*global_weight_curvature
@@ -405,13 +406,12 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
         cb.before_backward_pass()
         TIME_START("backward")
         loss.backward()
-        TIME_END("backward") #takes 30ms in ingp2, 28ms in hashsdf
+        TIME_END("backward") 
         cb.after_backward_pass()
         optimizer.step()
         if just_finished_sphere_fit:
             scheduler_warmup = GradualWarmupScheduler(optimizer, multiplier=1, total_epoch=3000, after_scheduler=scheduler_lr_decay) 
         if not in_process_of_sphere_init:
-            # scheduler_lr_decay.step()
             scheduler_warmup.step() #this will call the scheduler for the decay
         if phase.iter_nr==hyperparams.iter_finish_training+1:
             print("Finished training at iter ", phase.iter_nr)
