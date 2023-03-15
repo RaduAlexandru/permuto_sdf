@@ -2938,11 +2938,18 @@ class SDF(torch.nn.Module):
 
         return sdf_shifted, curvature
 
-    def save(self, root_folder, experiment_name, iter_nr):
+    def path_to_save_model(self, ckpt_folder, experiment_name, iter_nr):
+        models_path=os.path.join(ckpt_folder, experiment_name, str(iter_nr), "models")
+        return models_path
 
-        models_path=os.path.join(root_folder,"checkpoints/", experiment_name, str(iter_nr), "models")
+    def save(self, ckpt_folder, experiment_name, iter_nr):
+
+        # models_path=os.path.join(ckpt_folder, experiment_name, str(iter_nr), "models")
+        models_path=self.path_to_save_model(ckpt_folder, experiment_name, iter_nr)
         os.makedirs(models_path, exist_ok=True)
         torch.save(self.state_dict(), os.path.join(models_path, "sdf_model.pt")  )
+
+        return models_path 
 
 class RGB(torch.nn.Module):
 
@@ -3028,11 +3035,18 @@ class RGB(torch.nn.Module):
 
         return x
 
-    def save(self, root_folder, experiment_name, iter_nr):
+    def path_to_save_model(self, ckpt_folder, experiment_name, iter_nr):
+        models_path=os.path.join(ckpt_folder, experiment_name, str(iter_nr), "models")
+        return models_path
 
-        models_path=os.path.join(root_folder,"checkpoints/", experiment_name, str(iter_nr), "models")
+    def save(self, ckpt_folder, experiment_name, iter_nr):
+
+        # models_path=os.path.join(ckpt_folder, experiment_name, str(iter_nr), "models")
+        models_path=self.path_to_save_model(ckpt_folder, experiment_name, iter_nr)
         os.makedirs(models_path, exist_ok=True)
         torch.save(self.state_dict(), os.path.join(models_path, "rgb_model.pt")  )
+
+        return models_path 
 
     def parameters_only_encoding(self):
         params=[]

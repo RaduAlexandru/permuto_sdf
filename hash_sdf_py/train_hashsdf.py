@@ -422,194 +422,40 @@ def run_net_in_chunks(frame, chunk_size, args, tensor_reel, hyperparams, model_s
 
     return pred_rgb_img, pred_rgb_bg_img, pred_normals_img, pred_weights_sum_img
    
+def run_net_sphere_traced(frame, args, tensor_reel, hyperparams, model_sdf, model_rgb, model_bg, occupancy_grid, iter_nr_for_anneal, cos_anneal_ratio, forced_variance,  nr_sphere_traces, sdf_multiplier, sdf_converged_tresh):
+    ray_origins, ray_dirs=model_rgb.create_rays(frame, rand_indices=None)
+  
+    ray_end, ray_end_sdf, ray_end_gradient, geom_feat_end, traced_samples_packed=sphere_trace(nr_sphere_traces, ray_origins, ray_dirs, model_sdf, return_gradients=True, sdf_multiplier=sdf_multiplier, sdf_converged_tresh=sdf_converged_tresh, occupancy_grid=occupancy_grid)
+    #check if we are in occupied space with the traced samples
+    is_within_bounds= model_sdf.boundary_primitive.check_point_inside_primitive(ray_end)
+    if hyperparams.use_occupancy_grid:
+        is_in_occupied_space=occupancy_grid.check_occupancy(ray_end)
+        is_within_bounds=torch.logical_and(is_in_occupied_space.view(-1), is_within_bounds.view(-1) )
+    #make weigths for each sample that will be just 1 and 0 if the samples is in empty space
+    weights=torch.ones_like(ray_end)[:,0:1].view(-1,1)
+    weights[torch.logical_not(is_within_bounds)]=0.0 #set the samples that are outside of the occupancy grid to zero
 
-
-def run_net_sphere_traced_batched(frame, chunk_size,   args, tensor_reel,  min_dist_between_samples, max_nr_samples_per_ray, model, model_rgb, model_bg, model_colorcal, lattice, lattice_bg, iter_nr_for_anneal, aabb, cos_anneal_ratio, forced_variance, nr_samples_bg,  use_occupancy_grid, occupancy_grid, nr_iters_sphere_trace, sphere_trace_agressiveness, sphere_trace_converged_threshold, sphere_trace_push_in_gradient_dir, return_features=False):
-    ray_origins_full, ray_dirs_full=model.create_rays(frame, rand_indices=None)
-    nr_chunks=math.ceil( ray_origins_full.shape[0]/chunk_size)
-    ray_origins_list=torch.chunk(ray_origins_full, nr_chunks)
-    ray_dirs_list=torch.chunk(ray_dirs_full, nr_chunks)
-    pred_rgb_list=[]
-    pred_weights_sum_list=[]
-    pred_normals_list=[]
-    pred_depth_list=[]
-    pred_feat_list=[]
-    pts_start_list=[]
-    pts_end_list=[]
-    for i in range(len(ray_origins_list)):
-        # print("i",i)
-        ray_origins=ray_origins_list[i]
-        ray_dirs=ray_dirs_list[i]
-        nr_rays_chunk=ray_origins.shape[0]
+    #we cannot use the ray_end_gradient directly because that is only defined at the samples, but now all rays may have samples because we used a occupancy grid, so we need to run the integrator
+    ray_end_gradient_integrated=model_rgb.volume_renderer_neus.integrate(traced_samples_packed, ray_end_gradient, weights)
+    pred_normals=F.normalize(ray_end_gradient_integrated, dim=1)
+    #get also rgb
+    rgb_samples = model_rgb(traced_samples_packed.samples_pos, traced_samples_packed.samples_dirs, ray_end_gradient, geom_feat_end, iter_nr_for_anneal)
+    pred_rgb_integrated=model_rgb.volume_renderer_neus.integrate(traced_samples_packed, rgb_samples, weights) 
+    #wegiths are per sample so they also have to be summed per ray
+    pred_weights_sum, _=VolumeRendering.sum_over_each_ray(traced_samples_packed, weights)
     
-        ray_points_entry, ray_t_entry, ray_points_exit, ray_t_exit, does_ray_intersect_box=aabb.ray_intersection(ray_origins, ray_dirs)
 
-        ray_samples_packed=occupancy_grid.compute_first_sample_start_of_occupied_regions(ray_origins, ray_dirs, ray_t_entry, ray_t_exit)
-        ray_samples_packed=ray_samples_packed.get_valid_samples()
-
-        #run sphere tracing for nr_iters
-        if ray_samples_packed.samples_pos.shape[0]==0: #if have no samples it means we are all in empty space
-            pts_start=torch.zeros_like(ray_origins)
-            pts_end=torch.zeros_like(ray_origins)
-            pred_rgb=torch.zeros_like(ray_origins)
-            pts=torch.zeros_like(ray_origins)
-            sdf=torch.zeros_like(ray_origins)[:,0:1]
-            sdf_gradients=torch.zeros_like(ray_origins)
-            weights=torch.ones_like(pts)
-            weights_sum=torch.zeros_like(ray_origins)[:,0:1]
-            pred_normals=torch.zeros_like(ray_origins)
-            pred_depth=torch.zeros_like(ray_origins)[:,0:1]
-            nr_samples_per_ray=torch.zeros_like(ray_origins)[:,0:1]
-            pred_feat=torch.zeros([ray_origins.shape[0],model.feat_size_out])
-        else: #run sphere tracing
-            pos=ray_samples_packed.samples_pos
-            start_occupancy_origins_packed=pos
-            #move position slightyl inside the voxel
-            voxel_size=1.0/occupancy_grid.get_nr_voxels_per_dim()
-            pos=pos+ray_samples_packed.samples_dirs*voxel_size*0.5
-            # print("pos",pos.shape)
-            # print("ray_origins",ray_origins.shape)
-            pts_start=pos
-            ray_converged_flag=torch.zeros_like(pos)[:,0:1].bool() #all rays start as unconverged
-            pts=pos.clone()
-            for s_idx in range(nr_iters_sphere_trace): 
-                # print("s_idx", s_idx)
-                
-                #get the positions that are converged
-                select_cur_iter=torch.logical_not(ray_converged_flag)
-                pos_unconverged=pts[ select_cur_iter.repeat(1,3) ].view(-1,3)
-                dirs_unconverged=ray_samples_packed.samples_dirs[ select_cur_iter.repeat(1,3) ].view(-1,3)
-                origins_unconverged=start_occupancy_origins_packed[ select_cur_iter.repeat(1,3) ].view(-1,3)
-                if pos_unconverged.shape[0]==0:  #all points are converged
-                    break;
-                # print('pos_unconverged',pos_unconverged.shape)
-
-                # sdf, feat, _=model(pos, lattice, iter_nr_for_anneal, use_only_dense_grid=False)
-                # pos=pos+ray_samples_packed.samples_dirs*sdf*sphere_trace_agressiveness
-
-                sdf, feat, _=model(pos_unconverged, lattice, iter_nr_for_anneal, use_only_dense_grid=False)
-                pos_unconverged=pos_unconverged+dirs_unconverged*sdf*sphere_trace_agressiveness
-
-                #get the if points are now converged
-                newly_converged_flag=sdf.abs()<sphere_trace_converged_threshold
-                # print("newly_converged_flag",newly_converged_flag.shape)
-                # print("ray_converged_flag[select_cur_iter]",ray_converged_flag[select_cur_iter].shape)
-                ray_converged_flag[select_cur_iter]=torch.logical_or(ray_converged_flag[select_cur_iter], newly_converged_flag.view(-1) )
-                ray_converged_flag=ray_converged_flag.view(-1,1)
-
-
-                #check if the new positions are in unnocupied space and if they are move them towards the next occupied voxel
-                pos_unconverged, is_within_grid_bounds=occupancy_grid.advance_sample_to_next_occupied_voxel(dirs_unconverged, pos_unconverged)
-                ray_converged_flag[select_cur_iter]=torch.logical_or(ray_converged_flag[select_cur_iter], torch.logical_not(is_within_grid_bounds.view(-1)) )
-                ray_converged_flag=ray_converged_flag.view(-1,1)
-
-
-                
-
-
-
-                #update the new points
-                pts[select_cur_iter.repeat(1,3)]=pos_unconverged.view(-1)
-
-            # print("finished sphere tracing")
-            # pts_end=pos
-
-            sdf, sdf_gradients, feat, _=model.get_sdf_and_gradient(pts, lattice, iter_nr_for_anneal, use_only_dense_grid=False, method="finite_difference")
-            sdf_gradients=sdf_gradients.detach()
-
-            if sphere_trace_push_in_gradient_dir!=0:
-                #move the points in the gradient direction So that they snap to soem surface
-                not_converged_flag=sdf>sphere_trace_converged_threshold
-                pts[not_converged_flag.repeat(1,3)]=(pts[not_converged_flag.repeat(1,3)]-sdf_gradients[not_converged_flag.repeat(1,3)]*sphere_trace_push_in_gradient_dir).view(-1)
-                sdf, sdf_gradients, feat, _=model.get_sdf_and_gradient(pts, lattice, iter_nr_for_anneal, use_only_dense_grid=False, method="finite_difference")
-
-            # not_converged_flag=sdf>sphere_trace_converged_threshold
-            # print("sdf",sdf.shape)
-
-            #remove points outside of the volume
-            # dist_from_center=torch.norm(pts, dim=-1)
-            # pts_outside_of_sphere=dist_from_center>1.0
-            is_in_occupied_space=occupancy_grid.check_occupancy(pts)
-            # is_in_empty_space=torch.logical_not(is_in_occupied_space)
-            # pts[is_in_empty_space.repeat(1,3)]=0.0
-            # pts=pts.view(-1,3)
-            # sdf_gradients[is_in_empty_space.repeat(1,3)]=0
-            # sdf_gradients=sdf_gradients.view(-1,3)
-
-            ##check that the points are still within bounds of the primitive
-            pts_norm=pts.norm(dim=-1, keepdim=True)
-            is_in_abb=pts_norm<aabb.m_radius
-            is_in_occupied_space=torch.logical_and(is_in_occupied_space.view(-1), is_in_abb.view(-1) )
-            is_in_occupied_space=is_in_occupied_space.view(-1,1)
-
-
-
-            pts_end=pts
-
-            #get color 
-            # pts=pos 
-            dirs=ray_samples_packed.samples_dirs
-            rgb_samples, rgb_samples_view_dep = model_rgb(model, feat, sdf_gradients, pts, dirs, lattice, iter_nr_for_anneal)
-            rgb_samples=rgb_samples.view(-1, 3)
-            weights=torch.ones_like(rgb_samples)[:,0:1].view(-1,1)
-            weights[torch.logical_not(is_in_occupied_space)]=0.0 #set the samples that are outside of the occupancy grid to zero
-            pred_rgb=model.volume_renderer.integrator_module(ray_samples_packed, rgb_samples, weights)
-            # pred_rgb=rgb_samples.view(-1,3)
-            # print("pred_rgb",pred_rgb.min(), pred_rgb.max())
-            # print("pred_rgb",pred_rgb.shape)
-            # if(pred_rgb.shape[0]!=ray_origins.shape[0]):
-            #     print("ray_origins",ray_origins.shape)
-            #     print("pred_rgb",pred_rgb.shape)
-            #     print("wtf------")
-            #     exit(1)
-            
-
-            #some things that are just zero in this case
-            # pred_normals=torch.zeros_like(ray_origins)
-            pred_normals=VolumeRendering.integrate_rgb_and_weights(ray_samples_packed, sdf_gradients, weights)
-            # weights_sum=torch.ones_like(ray_origins)[:,0:1] #they are used for alpha so we set them to 1
-            # weights_sum=weights.view(-1,1) #sicne we have onyl one sample per ray, the weights sum can be viewed as weights directly
-            weights_sum, weight_sum_per_sample=VolumeRendering.sum_over_each_ray(ray_samples_packed, weights)
-            pred_depth=torch.zeros_like(ray_origins)[:,0:1]
-
-
-        #accumulat the rgb and weights_sum
-        pts_start_list.append(pts_start)
-        pts_end_list.append(pts_end)
-        pred_rgb_list.append(pred_rgb.detach())
-        pred_weights_sum_list.append(weights_sum.detach())
-        pred_normals_list.append(pred_normals.detach())
-        pred_depth_list.append(pred_depth.detach())
-        if return_features:
-            pred_feat_list.append(pred_feat.detach())
-
-
-    #concat
-    pts_start=torch.cat(pts_start_list,0)
-    pts_end=torch.cat(pts_end_list,0)
-    pred_rgb=torch.cat(pred_rgb_list,0)
-    pred_weights_sum=torch.cat(pred_weights_sum_list,0)
-    pred_normals=torch.cat(pred_normals_list,0)
-    pred_depth=torch.cat(pred_depth_list,0)
-    if return_features:
-        pred_features=torch.cat(pred_feat_list,0)
-
-    #reshape in imgs
-    # print("pred_rgb is ", pred_rgb.shape)
-    # print("pred_normals is ", pred_normals.shape)
-    pred_rgb_img=lin2nchw(pred_rgb, frame.height, frame.width)
-    pred_weights_sum_img=lin2nchw(pred_weights_sum, frame.height, frame.width)
+    #bg we don't want for now
+    pred_rgb_bg_img=None
+    pred_rgb_img=lin2nchw(pred_rgb_integrated, frame.height, frame.width)
     pred_normals_img=lin2nchw(pred_normals, frame.height, frame.width)
-    pred_depth_img=lin2nchw(pred_depth, frame.height, frame.width)
-    if return_features:
-        pred_features_img=lin2nchw(pred_features, frame.height, frame.width)
-    else:
-        pred_features_img=None
-    # pred_normals_img=(pred_normals_img+1)*0.5
+    pred_weights_sum_img=lin2nchw(pred_weights_sum, frame.height, frame.width)
 
-    # show_points(pts,"pts")
 
-    return pred_rgb_img, pred_weights_sum_img, pred_normals_img, pred_depth_img, pred_features_img, pts_start, pts_end
+
+    return pred_rgb_img, pred_rgb_bg_img, pred_normals_img, pred_weights_sum_img
+
+
 
 
 def train(args, config_path, hyperparams, train_params, loader_train, experiment_name, with_viewer, checkpoint_path, tensor_reel):
@@ -804,6 +650,22 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
             print("phase.iter_nr",  phase.iter_nr, "loss ", loss.item() )
 
 
+
+
+
+        #save checkpoint
+        if train_params.save_checkpoint() and phase.iter_nr%500==0:
+            model_sdf.save(checkpoint_path, experiment_name, phase.iter_nr)
+            model_rgb.save(checkpoint_path, experiment_name, phase.iter_nr)
+            model_bg.save(checkpoint_path, experiment_name, phase.iter_nr, additional_name="_bg")
+            if hyperparams.use_color_calibration:
+                model_colorcal.save(checkpoint_path, experiment_name, phase.iter_nr)
+            if hyperparams.use_occupancy_grid:
+                path_to_save_model=model_sdf.path_to_save_model(checkpoint_path, experiment_name, phase.iter_nr)
+                torch.save(occupancy_grid.get_grid_values(), os.path.join(path_to_save_model, "grid_values.pt")  )
+                torch.save(occupancy_grid.get_grid_occupancy(), os.path.join(path_to_save_model, "grid_occupancy.pt"))
+
+
         ###visualize
         if with_viewer and phase.iter_nr%300==0 or phase.iter_nr==1 or ngp_gui.m_control_view:
             with torch.set_grad_enabled(False):
@@ -814,8 +676,8 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
                 if not in_process_of_sphere_init:
                     show_points(fg_ray_samples_packed.samples_pos,"samples_pos_fg")
 
-                vis_width=150
-                vis_height=150
+                vis_width=300
+                vis_height=300
                 if first_time_getting_control or ngp_gui.m_control_view:
                     first_time_getting_control=False
                     frame=Frame()
@@ -827,52 +689,13 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
                 ray_origins, ray_dirs=create_rays_from_frame(frame, rand_indices=None) # ray origins and dirs as nr_pixels x 3
                 
 
-                # #sphere trace those pixels
-                # ray_end, ray_end_sdf, ray_end_gradient, geom_feat_end, traced_samples_packed=sphere_trace(15, ray_origins, ray_dirs, model_sdf, return_gradients=True, sdf_multiplier=1.0, sdf_converged_tresh=0.005, occupancy_grid=occupancy_grid)
-                # #check if we are in occupied space with the traced samples
-                # is_within_bounds= model_sdf.boundary_primitive.check_point_inside_primitive(ray_end)
-                # if hyperparams.use_occupancy_grid:
-                #     is_in_occupied_space=occupancy_grid.check_occupancy(ray_end)
-                #     is_within_bounds=torch.logical_and(is_in_occupied_space.view(-1), is_within_bounds.view(-1) )
-                # #make weigths for each sample that will be just 1 and 0 if the samples is in empty space
-                # weights=torch.ones_like(ray_end)[:,0:1].view(-1,1)
-                # weights[torch.logical_not(is_within_bounds)]=0.0 #set the samples that are outside of the occupancy grid to zero
-                # # pred_rgb=model.volume_renderer.integrator_module(ray_samples_packed, rgb_samples, weights)
-        
-                # #we cannot use the ray_end_gradient directly because that is only defined at the samples, but now all rays may have samples because we used a occupancy grid, so we need to run the integrator
-                # # ray_end_gradient_integrated, _=VolumeRendering.sum_over_each_ray(traced_samples_packed, ray_end_gradient)
-                # ray_end_gradient_integrated=model_rgb.volume_renderer_neus.integrate(traced_samples_packed, ray_end_gradient, weights)
-
-                # #get also rgb
-                # rgb_samples = model_rgb(traced_samples_packed.samples_pos, traced_samples_packed.samples_dirs, ray_end_gradient, geom_feat_end, iter_nr_for_anneal)
-                # pred_rgb_integrated=model_rgb.volume_renderer_neus.integrate(traced_samples_packed, rgb_samples, weights)
-
-                # #visualize normal
-                # ray_end_normal=F.normalize(ray_end_gradient_integrated, dim=1)
-                # ray_end_normal_vis=(ray_end_normal+1.0)*0.5
-                # ray_end_normal_tex=ray_end_normal_vis.view(vis_height, vis_width, 3)
-                # ray_end_normal_img=tex2img(ray_end_normal_tex)
-                # Gui.show(tensor2mat(ray_end_normal_img), "ray_end_normal_img")
-                # #vis_rgb
-                # pred_rgb_img=lin2nchw(pred_rgb_integrated, vis_height, vis_width)
-                # Gui.show(tensor2mat(pred_rgb_img).rgb2bgr(), "pred_rgb_img")
-
-
-
-                #do it volumetrically 
-                # pred_rgb, pred_rgb_bg, pred_normals, sdf_gradients, weights_sum, fg_ray_samples_packed  =run_net(args, tensor_reel, hyperparams, ray_origins, ray_dirs, None, model_sdf, model_rgb, model_bg, None, occupancy_grid, iter_nr_for_anneal, cos_anneal_ratio, forced_variance)
-                # #vis normal
-                # pred_normals_vis=(pred_normals+1.0)*0.5
-                # pred_normals_img=lin2nchw(pred_normals_vis, vis_height, vis_width)
-                # Gui.show(tensor2mat(pred_normals_img), "pred_normals_img")
-                # #vis RGB
-                # pred_rgb_img=lin2nchw(pred_rgb, vis_height, vis_width)
-                # Gui.show(tensor2mat(pred_rgb_img).rgb2bgr(), "pred_rgb_img")
-
-
-                #do it volumetrially but in chunks
-                chunk_size=50*50
-                pred_rgb_img, pred_rgb_bg_img, pred_normals_img, pred_weights_sum_img=run_net_in_chunks(frame, chunk_size, args, tensor_reel, hyperparams, model_sdf, model_rgb, model_bg, occupancy_grid, iter_nr_for_anneal, cos_anneal_ratio, forced_variance)
+                #render image either volumetrically or with sphere tracing
+                use_volumetric_render=False
+                if use_volumetric_render:
+                    chunk_size=50*50
+                    pred_rgb_img, pred_rgb_bg_img, pred_normals_img, pred_weights_sum_img=run_net_in_chunks(frame, chunk_size, args, tensor_reel, hyperparams, model_sdf, model_rgb, model_bg, occupancy_grid, iter_nr_for_anneal, cos_anneal_ratio, forced_variance)
+                else:
+                    pred_rgb_img, pred_rgb_bg_img, pred_normals_img, pred_weights_sum_img=run_net_sphere_traced(frame, args, tensor_reel, hyperparams, model_sdf, model_rgb, model_bg, occupancy_grid, iter_nr_for_anneal, cos_anneal_ratio, forced_variance,  nr_sphere_traces=15, sdf_multiplier=0.9, sdf_converged_tresh=0.0002)
                 #vis normals
                 pred_normals_img_vis=(pred_normals_img+1.0)*0.5
                 pred_normals_img_vis_alpha=torch.cat([pred_normals_img_vis,pred_weights_sum_img],1)
@@ -902,9 +725,10 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
                 vis_height=frame_subsampled.height
                 frame=frame_subsampled
 
-                chunk_size=1000
 
+                chunk_size=1000
                 pred_rgb_img, pred_rgb_bg_img, pred_normals_img, pred_weights_sum_img=run_net_in_chunks(frame, chunk_size, args, tensor_reel, hyperparams, model_sdf, model_rgb, model_bg, occupancy_grid, iter_nr_for_anneal, cos_anneal_ratio, forced_variance)
+                # pred_rgb_img, pred_rgb_bg_img, pred_normals_img, pred_weights_sum_img=run_net_sphere_traced(frame, args, tensor_reel, hyperparams, model_sdf, model_rgb, model_bg, occupancy_grid, iter_nr_for_anneal, cos_anneal_ratio, forced_variance,  nr_sphere_traces=15, sdf_multiplier=0.9, sdf_converged_tresh=0.0002)
                 #vis normals
                 pred_normals_img_vis=(pred_normals_img+1.0)*0.5
                 pred_normals_img_vis_alpha=torch.cat([pred_normals_img_vis,pred_weights_sum_img],1)
