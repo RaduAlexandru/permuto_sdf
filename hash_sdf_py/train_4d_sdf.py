@@ -259,8 +259,8 @@ def run():
                 Gui.show(tensor2mat(ray_end_normal_img), "ray_end_normal_img")
 
 
-        # if phase.iter_nr%5000==0 or phase.iter_nr==1:
-            # model.save(package_root, "4d_v2", phase.iter_nr)
+        if train_params.save_checkpoint() and (phase.iter_nr%5000==0 or phase.iter_nr==1):
+            model.save(package_root, "4d", phase.iter_nr)
 
         #finally just update the opengl viewer
         with torch.set_grad_enabled(False):

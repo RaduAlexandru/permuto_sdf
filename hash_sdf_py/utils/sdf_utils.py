@@ -12,12 +12,6 @@ from skimage import measure
 from easypbr  import *
 
 
-# def rand_points_in_box(nr_points, bounding_box_sizes_xyz, bounding_box_translation):
-
-#     points=torch.rand(nr_points, 3) #in range 0,1
-#     points=points* torch.as_tensor(bounding_box_sizes_xyz).cuda() -torch.as_tensor(bounding_box_sizes_xyz)/2  +torch.as_tensor(bounding_box_translation)
-
-#     return points
 
 def sdf_loss(surface_sdf, surface_sdf_gradients, offsurface_sdf, offsurface_sdf_gradients, gt_normals, eik_clamp=None): 
 	#equation 6 of https://arxiv.org/pdf/2006.09661.pdf

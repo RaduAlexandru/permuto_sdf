@@ -333,87 +333,6 @@ def neus_sample_pdf(bins, weights, n_samples, deterministic=False):
 		return samples
 
 
-def compute_points_coarse(origin, direction, nr_samples_per_ray, near, far, perturb):
-		num_rays= direction.shape[0]
-		t_vals = torch.linspace(0.0, 1.0, nr_samples_per_ray, dtype=torch.float32, device=torch.device("cuda") )
-		z_vals = near * (1.0 - t_vals) + far * t_vals
-		# z_vals = 1.0 / (1.0 / near * (1.0 - t_vals) + 1.0 / far * t_vals)
-		z_vals = z_vals.expand([num_rays, nr_samples_per_ray])
-		#perturb
-		if perturb:
-				# Get intervals between samples.
-				mids = 0.5 * (z_vals[..., 1:] + z_vals[..., :-1])
-				upper = torch.cat((mids, z_vals[..., -1:]), dim=-1)
-				lower = torch.cat((z_vals[..., :1], mids), dim=-1)
-				# Stratified samples in those intervals.
-				t_rand = torch.rand(z_vals.shape, dtype=torch.float32, device=torch.device("cuda")  )
-				z_vals = lower + (upper - lower) * t_rand
-		pts = origin[..., None, :] + direction[..., None, :] * z_vals[..., :, None] #nr_rays, samples_per_ray, 3
-
-		return pts, z_vals
-
-#https://github.com/Totoro97/NeuS/blob/6f96f96005d72a7a358379d2b576c496a1ab68dd/models/dataset.py#L160
-def near_far_from_sphere(rays_o, rays_d):
-				a = torch.sum(rays_d**2, dim=-1, keepdim=True)
-				b = 2.0 * torch.sum(rays_o * rays_d, dim=-1, keepdim=True)
-				mid = 0.5 * (-b) / a
-				near = mid - 1.0
-				far = mid + 1.0
-				return near, far
-
-
-def run_nerf( model, model_bg, lattice, phase, ray_origins, ray_dirs, nr_samples_per_ray ):
-
-
-	#create points on the ray
-	z_vals, dummy = model.ray_sampler.get_z_vals(ray_origins, ray_dirs, model, lattice, phase.iter_nr)
-	ray_samples = ray_origins.unsqueeze(1) + z_vals.unsqueeze(2) * ray_dirs.unsqueeze(1)
-
-	#get rgba for every point on the ray
-	rgba_field=model( ray_samples, lattice, phase.iter_nr) 
-	rgb_samples=rgba_field[:,:,0:3]
-	radiance_samples=rgba_field[:,:,3]
-
-	#get weights for the integration
-	# weights, disp_map, acc_map, depth_map=model.volume_renderer(radiance_samples, z_vals, ray_dirs)
-	weights, disp_map, acc_map, depth_map, alpha=model.volume_renderer(radiance_samples, z_vals)
-	pred_rgb = torch.sum(weights.unsqueeze(-1) * rgb_samples, 1)
-
-	# #get also bg 
-	# if without_mask:
-	#   nr_rays=ray_origins.shape[0]
-	#   z_vals_outside = torch.linspace(1e-3, 1.0 - 1.0 / (nr_samples_bg + 1.0), nr_samples_bg)
-	#   if model.training:
-	#     mids = .5 * (z_vals_outside[..., 1:] + z_vals_outside[..., :-1])
-	#     upper = torch.cat([mids, z_vals_outside[..., -1:]], -1)
-	#     lower = torch.cat([z_vals_outside[..., :1], mids], -1)
-	#     t_rand = torch.rand([nr_rays, z_vals_outside.shape[-1]])
-	#     z_vals_outside = lower[None, :] + (upper - lower)[None, :] * t_rand
-
-
-	#   near, far = near_far_from_sphere(ray_origins, ray_dirs)
-	#   z_vals_outside = far / torch.flip(z_vals_outside, dims=[-1]) + 1.0 / nr_samples_per_ray
-
-	#   print("z_vals",z_vals.shape)
-	#   print("z_vals_outside",z_vals_outside.shape)
-
-	#   ray_samples_bg = ray_origins.unsqueeze(1) + z_vals_outside.unsqueeze(2) * ray_dirs.unsqueeze(1)
-
-
-	#   z_vals_feed = torch.cat([z_vals, z_vals_outside], dim=-1)
-	#   z_vals_feed, _ = torch.sort(z_vals_feed, dim=-1)
-	#   ray_samples_fg_and_bg = ray_origins.unsqueeze(1) + z_vals_outside.unsqueeze(2) * ray_dirs.unsqueeze(1)
-
-	# else:
-	#   ray_samples_bg=None
-	#   ray_samples_fg_and_bg=None
-
-
-	return pred_rgb, ray_samples 
-	# return pred_rgb, ray_samples, ray_samples_bg, ray_samples_fg_and_bg
-	# return rgb, disp, acc, weights, depth, radiance
-
-
 def importance_sample(z_vals, weights, nr_samples_per_ray_fine, perturb):
 		z_vals_mid = 0.5 * (z_vals[..., 1:] + z_vals[..., :-1])
 		# z_samples = sample_pdf(
@@ -428,34 +347,6 @@ def importance_sample(z_vals, weights, nr_samples_per_ray_fine, perturb):
 
 		return z_vals
 
-
-def warp(pts, pos_encode_deform, mlp_deform, mlp_pivot, mlp_rotation, mlp_translation, is_training, is_1d):
-		# original_pts=pts
-		original_shape=pts.shape
-		pts=pts.view(-1,3)
-		pts_enc=pos_encode_deform(pts, update_dampening=is_training)
-		feat=mlp_deform(pts_enc)
-		pivot=mlp_pivot(feat)
-		rotation=mlp_rotation(feat)
-		translation=mlp_translation(feat)
-		# delta[:,:,1:2]=0.0
-		# pts=pts+delta
-		warped_points=pts
-		warped_points = warped_points + pivot
-		q_rot = quaternion.exp(rotation)
-		warped_points = quaternion.rotate(q_rot, warped_points)
-		warped_points = warped_points - pivot
-		warped_points = warped_points + translation
-		#set the new pts
-		pts=warped_points
-		pts=pts.view(original_shape)
-		#the new pts will have the same y coordinate
-		if is_1d:
-			pts[:,:,1:2]=0.0
-		#get the delta
-		# delta=original_pts-pts
-
-		return pts
 
 
 #frm nerfies utils
@@ -546,65 +437,6 @@ def general_loss_with_squared_residual(squared_x, alpha, scale):
 
 	return loss
 
-#from  nerfies https://github.com/google/nerfies/blob/d0940fb16b3473ce49d192ebb0b6589d69ce2dee/nerfies/training.py#L55
-def compute_elastic_loss(jacobian, use_1d, alpha=-2.0, scale=0.03, eps=1e-6):
-	"""Compute the elastic regularization loss.
-	The loss is given by sum(log(S)^2). This penalizes the singular values
-	when they deviate from the identity since log(1) = 0.0,
-	where D is the diagonal matrix containing the singular values.
-	Args:
-		jacobian: the Jacobian of the point transformation.
-		alpha: the alpha for the General loss.
-		scale: the scale for the General loss.
-		eps: a small value to prevent taking the log of zero.
-	Returns:
-		The elastic regularization loss.
-	"""
-	#on pytorch 1.9 it might be better to just comput torch.linalg.svdvals which apparently has more stable gradients
-	# print("jacobian is ", jacobian.shape)
-	svals = torch.linalg.svdvals(jacobian)
-	# print("jacobian", jacobian.shape)
-	# u, svals, vh = torch.linalg.svd(jacobian, compute_uv=False)
-	# svals = torch.linalg.svd(jacobian, compute_uv=False)
-	# print("svals is", svals.shape)
-	# print("svals is ", svals)
-	log_svals = torch.log(torch.maximum(svals, torch.tensor(eps)  ))
-	if use_1d: #we ignore the last column because we actually have a 2D datset so one dimensions doesnt matter
-		log_svals=log_svals[:,0:2]
-
-	# print("log_svals ", log_svals)
-	sq_residual = torch.sum(log_svals**2, axis=-1)
-	loss = scale * general_loss_with_squared_residual(
-			sq_residual, alpha=alpha, scale=scale)
-	residual = torch.sqrt(sq_residual)
-	return loss, residual
-
-#from https://github.com/SSRSGJYD/NeuralTexture/blob/d23f5e5ebb2c721525926c4e3d338b7687fcc1d3/model/pipeline.py
-def spherical_harmonics_basis(dirs):
-	'''
-	dirs: a tensor shaped (N, 3)
-	output: a tensor shaped (N, 9)
-	'''
-	batch = dirs.shape[0]
-	sh_bands = torch.ones((batch, 9), dtype=torch.float)
-	coff_0 = 1 / (2.0*math.sqrt(np.pi))
-	coff_1 = math.sqrt(3.0) * coff_0
-	coff_2 = math.sqrt(15.0) * coff_0
-	coff_3 = math.sqrt(1.25) * coff_0
-	# l=0
-	sh_bands[:, 0] = coff_0
-	# l=1
-	sh_bands[:, 1] = dirs[:, 1] * coff_1
-	sh_bands[:, 2] = dirs[:, 2] * coff_1
-	sh_bands[:, 3] = dirs[:, 0] * coff_1
-	# l=2
-	sh_bands[:, 4] = dirs[:, 0] * dirs[:, 1] * coff_2
-	sh_bands[:, 5] = dirs[:, 1] * dirs[:, 2] * coff_2
-	sh_bands[:, 6] = (3.0 * dirs[:, 2] * dirs[:, 2] - 1.0) * coff_3
-	sh_bands[:, 7] = dirs[:, 2] * dirs[:, 0] * coff_2
-	sh_bands[:, 8] = (dirs[:, 0] * dirs[:, 0] - dirs[:, 2] * dirs[:, 2]) * coff_2
-	return sh_bands
-
 #from a nr_rays x nr_samples tensor of z values, return a new tensor of some z_vals in the middle of each section. Based on Neus paper
 def get_midpoint_of_sections(z_vals):
 	dists = z_vals[..., 1:] - z_vals[..., :-1]
@@ -623,49 +455,6 @@ def get_midpoint_of_sections(z_vals):
 	# mid_z_vals = z_vals + dists * 0.5
 
 	return mid_z_vals
-
-#inspired from the mipnerf 360 paper
-def mip_nerf360_ray_regularization_loss(z_vals, weights, ray_t_entry, ray_t_exit):
-	#weights is nr_rays x nr_samples
-	nr_rays=weights.shape[0]
-	nr_samples=weights.shape[1]
-
-	# dists = z_vals[..., 1:] - z_vals[..., :-1]
-	t_normalized = (z_vals - ray_t_entry) / (ray_t_exit - ray_t_entry) #nr_rays x nr_samples
-	#now t_normalized normalizes should be between 0 and 1
-	t_normalized_except_last=t_normalized[..., :-1]
-	t_normalized_except_first=t_normalized[..., 1:]
-	print("t_normalized", t_normalized)
-	print("t_normalized_except_last", t_normalized_except_last)
-	print("t_normalized_except_first", t_normalized_except_first)
-	
-
-	#loss on distances
-	#https://discuss.pytorch.org/t/create-all-possible-combinations-of-a-3d-tensor-along-the-dimension-number-1/48155
-	# weights_excepts_last_sample=weights[..., :-1]
-	# weights_b=weights_excepts_last_sample.view(nr_rays, nr_samples-1, 1)
-	# weights_combinations=get_combinations(weights_b) #nr_rays x (nr_samples-1)*2, 2
-	# #get the (si+si+1/2)
-	# avg_segment=(t_normalized_except_last + t_normalized_except_first)/2
-	# avg_segment_combinations=get_combinations(avg_segment.unsqueeze(-1))  #nr_rays x (nr_samples-1)*2, 2
-
-	##attempt 2 at getting all pairs
-	# https://github.com/pytorch/pytorch/issues/7580
-
-
-	#loss on weights
-	t_normalized_segment= t_normalized[..., 1:] - t_normalized[..., :-1]
-	weights_except_last=weights[..., :-1]
-	# print("t_normalized_segment", t_normalized_segment.shape)
-	# print("weights_except_last", weights_except_last.shape)
-	loss_weights=(weights_except_last**2)*t_normalized_segment
-
-	loss_full=loss_weights.mean()
-
-
-	# exit(1)
-
-	return loss_full
 
 def create_rays_from_frame(frame, rand_indices):
 	# create grid 
