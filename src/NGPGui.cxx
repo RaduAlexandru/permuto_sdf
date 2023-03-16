@@ -38,24 +38,24 @@ NGPGui::NGPGui(const std::shared_ptr<easy_pbr::Viewer>& view):
     // m_show_nerf_surface_weights(false),
     // m_ray_origin_x_shift(0.0),
     // m_ray_origin_y_shift(0.0),
-    // m_isolines_layer_z_coord(0.0),
-    // m_compute_full_layer(false),
-    // m_isoline_width(0.005),
-    // m_distance_between_isolines(0.06),
+    m_isolines_layer_z_coord(0.0),
+    m_compute_full_layer(false),
+    m_isoline_width(0.005),
+    m_distance_between_isolines(0.06),
     // m_use_only_dense_grid(false),
     // m_spp(50),
     // m_render_mitsuba(false),
     // m_mitsuba_res_x(500),
     // m_mitsuba_res_y(500),
-    // m_use_controlable_frame(true),
-    // m_frame_idx_from_dataset(0),
-    // m_render_full_img(false),
-    // m_use_sphere_tracing(true),
-    // m_nr_iters_sphere_tracing(1),
-    // m_sphere_trace_agressiveness(1.0),
-    // m_sphere_trace_threshold_converged(0.001),
+    m_render_full_img(false),
+    m_use_controlable_frame(true),
+    m_frame_idx_from_dataset(0),
+    m_use_sphere_tracing(true),
+    m_nr_iters_sphere_tracing(1),
+    m_sphere_trace_agressiveness(1.0),
+    m_sphere_trace_threshold_converged(0.001),
     // m_sphere_trace_push_in_gradient_dir(0.0),
-    // m_chunk_size(2000),
+    m_chunk_size(2000),
     // m_error_map_max(0.00001),
     m_view(view)
     {
@@ -94,25 +94,24 @@ void NGPGui::post_draw(easy_pbr::Viewer& view){
     // ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
     // ImGui::Text("coarse2fine");
 
-    // if (ImGui::CollapsingHeader("Render from Frame") ) {
-    //     ImGui::Checkbox("use_controlable_frame", &m_use_controlable_frame);
-    //     ImGui::Checkbox("m_use_sphere_tracing", &m_use_sphere_tracing);
-    //     ImGui::SliderInt("nr_iters_sphere_tracing", &m_nr_iters_sphere_tracing, 1, 10) ;
-    //     ImGui::SliderFloat("sphere_trace_agressiveness", &m_sphere_trace_agressiveness, 0.0, 3.0) ;
-    //     ImGui::SliderFloat("sphere_trace_threshold_converged", &m_sphere_trace_threshold_converged, 0.0, 0.1) ;
-    //     ImGui::SliderFloat("sphere_trace_push_in_gradient_dir", &m_sphere_trace_push_in_gradient_dir, -0.1, 0.1) ;
-    //     ImGui::SliderInt("chunk_size", &m_chunk_size, 0, 20000) ;
-    //     ImGui::SliderInt("frame_idx_from_dataset", &m_frame_idx_from_dataset, 0, 100) ;
-    //     ImGui::SliderFloat("isolines_layer_z_coord", &m_isolines_layer_z_coord, -1.0f, 1.0f) ;
-    //     ImGui::SliderFloat("isoline_width", &m_isoline_width, 0.0f, 0.05f) ;
-    //     ImGui::SliderFloat("distance_between_isolines", &m_distance_between_isolines, 0.0f, 0.3f) ;
-    //     if (ImGui::Button("m_compute_full_layer") ) {
-    //         m_compute_full_layer=true;
-    //     }
-    //     if (ImGui::Button("Render Full Image") ) {
-    //         m_render_full_img=true;
-    //     }
-    // }
+    if (ImGui::CollapsingHeader("Render from Frame") ) {
+        ImGui::Checkbox("use_controlable_frame", &m_use_controlable_frame);
+        ImGui::Checkbox("m_use_sphere_tracing", &m_use_sphere_tracing);
+        ImGui::SliderInt("nr_iters_sphere_tracing", &m_nr_iters_sphere_tracing, 1, 10) ;
+        ImGui::SliderFloat("sphere_trace_agressiveness", &m_sphere_trace_agressiveness, 0.0, 3.0) ;
+        ImGui::SliderFloat("sphere_trace_threshold_converged", &m_sphere_trace_threshold_converged, 0.0, 0.1) ;
+        ImGui::SliderInt("chunk_size", &m_chunk_size, 0, 20000) ;
+        ImGui::SliderInt("frame_idx_from_dataset", &m_frame_idx_from_dataset, 0, 100) ;
+        ImGui::SliderFloat("isolines_layer_z_coord", &m_isolines_layer_z_coord, -1.0f, 1.0f) ;
+        ImGui::SliderFloat("isoline_width", &m_isoline_width, 0.0f, 0.05f) ;
+        ImGui::SliderFloat("distance_between_isolines", &m_distance_between_isolines, 0.0f, 0.3f) ;
+        if (ImGui::Button("m_compute_full_layer") ) {
+            m_compute_full_layer=true;
+        }
+        if (ImGui::Button("Render Full Image") ) {
+            m_render_full_img=true;
+        }
+    }
 
     // //plotting stuff
     // ImGui::Checkbox("show_unisurf_weights", &m_show_unisurf_weights);

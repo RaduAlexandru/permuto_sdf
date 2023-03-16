@@ -83,10 +83,7 @@ def run():
     low_res=False
 
 
-
     aabb = create_bb_for_dataset(args.dataset)
-
-    
 
     #params for rendering
     model_sdf=SDF(in_channels=3, boundary_primitive=aabb, geom_feat_size_out=hyperparams.sdf_geom_feat_size, nr_iters_for_c2f=hyperparams.sdf_nr_iters_for_c2f).to("cuda")

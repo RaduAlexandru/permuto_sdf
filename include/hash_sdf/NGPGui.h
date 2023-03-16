@@ -63,9 +63,9 @@ public:
 
 
     //stuff for rendeirng from arbitrary frames
+    bool m_render_full_img;
     bool m_use_controlable_frame;
     int m_frame_idx_from_dataset;
-    bool m_render_full_img;
     bool m_use_sphere_tracing;
     int m_nr_iters_sphere_tracing;
     float m_sphere_trace_agressiveness;
