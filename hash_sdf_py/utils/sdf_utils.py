@@ -242,76 +242,8 @@ def sample_sdf_in_layer(model, lattice, iter_nr, use_only_dense_grid, layer_size
 
 	return point_layer, sdf, sdf_gradients
 
-def extract_mesh_from_sdf_model_old_and_slow(model, lattice, nr_points_per_dim, min_val, max_val):
-
-	torch.set_grad_enabled(False)
-
-
-	N = nr_points_per_dim  # grid cells per axis
-	t = np.linspace(min_val , max_val, N, dtype=np.float32)
-	chunk_size=nr_points_per_dim*10 #do not set this to some arbitrary number. There seems to be a bug whn we set it to a fixed value that is not easily divizible by the nr_points per dim. It seems that when we put each sdf chunk into the sdf_full, the bug might occur there. Either way, just leave it to something easily divisible
-
-
-	with torch.no_grad():
-		#we make it on cpu since GPU memory is more precious
-		query_pts = np.stack(np.meshgrid(t, t, t, indexing='ij', copy=False ), -1)
-		query_pts_flat = torch.from_numpy(query_pts.reshape([-1,3])).float()
-		# query_pts_flat=InstantNGP.meshgrid3d(min_val, max_val, N).cuda().view(-1,3) #make N+1 points so as to be consistent with np.meshgrid
-		# query_pts_flat=query_pts_flat.cpu() #we make it on cpu since GPU memory is more precious
-		torch.cuda.empty_cache()
-		print("query_pts_flat", query_pts_flat)
-		# print("query_pts_flat", query_pts_flat)
-		# print("query_pts_flat min max", query_pts_flat.min(), query_pts_flat.max())
-		
-		
-		nr_chunks = math.ceil( query_pts_flat.shape[0]/chunk_size)
-		query_pts_flat_list=torch.chunk(query_pts_flat, nr_chunks)
-		nr_points=query_pts_flat.shape[0]
-
-		query_pts=None #Release the memory
-		query_pts_flat=None
-		
-		sdf_full = torch.zeros(nr_points, device=torch.device('cpu'))
-
-
-		for i in range(len(query_pts_flat_list)):
-			# print("processing ", i, " of ", len(query_pts_flat_list) )
-			pts = query_pts_flat_list[i].cuda()
-			sdf, feat, _=model(pts, lattice, 9999999, False) #use a really large iter_nr to ensure that the coarse2fine has finished
-			
-			sdf_full[i*pts.shape[0]:(i+1)*pts.shape[0]] = sdf.squeeze(1).cpu()
-
-	sdf_full = sdf_full.cpu().numpy()
-
-
-	threshold = 0.
-	print('fraction occupied', np.sum(sdf_full < threshold)/sdf_full.shape[0], flush = True)
-
-
-	# sdf_full = sdf_full.reshape(N+1,N+1,N+1)
-	sdf_full = sdf_full.reshape(N,N,N)
-	# vertices, faces, normals, values = measure.marching_cubes(sdf_full, threshold, spacing=[0.00166944908, 0.00166944908, 0.00166944908])
-	vertices, faces, normals, values = measure.marching_cubes(sdf_full, threshold )
-	print('done', vertices.shape, faces.shape, normals.shape)
-	# vertices=vertices/(N+1) ####double check if we should divide by N or by N+1
-	# vertices=vertices-[0.5, 0.5, 0.5]
-	# b_min_np = torch.tensor(min_val, dtype=torch.float32)
-	# b_max_np = torch.tensor(max_val, dtype=torch.float32)
-	vertices = vertices / (N - 1.0) * (max_val - min_val) + min_val
-	# vertices = vertices / (N - 1.0) * (b_max_np - b_min_np)[None, :] + b_min_np[None, :]
-
-
-	#make mesh
-	extracted_mesh=Mesh()
-	extracted_mesh.V=vertices
-	extracted_mesh.F=faces
-	extracted_mesh.NV=-normals
-
-	return extracted_mesh
-
-
 #do it similar to neus because they do it a bit better since they don't allocate all points at the same time
-def extract_mesh_from_sdf_model(model, lattice, nr_points_per_dim, min_val, max_val, threshold=0):
+def extract_mesh_from_sdf_model(model, nr_points_per_dim, min_val, max_val, threshold=0):
 
 	torch.set_grad_enabled(False)
 
@@ -333,7 +265,7 @@ def extract_mesh_from_sdf_model(model, lattice, nr_points_per_dim, min_val, max_
 					xx, yy, zz = torch.meshgrid(xs, ys, zs)
 					pts = torch.cat([xx.reshape(-1, 1), yy.reshape(-1, 1), zz.reshape(-1, 1)], dim=-1)
 
-					sdf_cur, _, _=model(pts, lattice, 9999999, False) #use a really large iter_nr to ensure that the coarse2fine has finished
+					sdf_cur, _=model(pts, 9999999) #use a really large iter_nr to ensure that the coarse2fine has finished
 
 					sdf_cur=sdf_cur.reshape(len(xs), len(ys), len(zs)).detach().cpu().numpy()
 					sdf_full[xi * N: xi * N + len(xs), yi * N: yi * N + len(ys), zi * N: zi * N + len(zs)] = sdf_cur

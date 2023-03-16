@@ -27,7 +27,6 @@ from dataloaders import *
 import hash_sdf
 from hash_sdf  import TrainParams
 from hash_sdf  import OccupancyGrid
-from hash_sdf_py.utils.common_utils import create_dataloader
 from hash_sdf_py.models.models import SDF
 from hash_sdf_py.models.models import RGB
 from hash_sdf_py.models.models import NerfHash
@@ -42,7 +41,6 @@ from hash_sdf_py.train_hashsdf import HyperParamsHashSDF
 import hash_sdf_py.paths.list_of_checkpoints as list_chkpts
 import hash_sdf_py.paths.list_of_training_scenes as list_scenes
 
-# from pyhocon import ConfigFactory
 
 config_file="train_hashsdf.cfg"
 
@@ -50,8 +48,6 @@ torch.manual_seed(0)
 torch.set_default_tensor_type(torch.cuda.FloatTensor)
 torch.set_grad_enabled(False)
 config_path=os.path.join( os.path.dirname( os.path.realpath(__file__) ) , '../../../config', config_file)
-
-
 
 
 
