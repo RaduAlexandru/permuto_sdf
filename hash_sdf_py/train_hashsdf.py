@@ -44,13 +44,13 @@ from hash_sdf_py.utils.common_utils import create_dataloader
 from hash_sdf_py.utils.common_utils import create_bb_for_dataset
 from hash_sdf_py.utils.common_utils import create_bb_mesh
 from hash_sdf_py.utils.common_utils import summary
-from hash_sdf_py.utils.hahsdf_utils import get_frames_cropped
-from hash_sdf_py.utils.hahsdf_utils import init_losses
-from hash_sdf_py.utils.hahsdf_utils import get_iter_for_anneal
-from hash_sdf_py.utils.hahsdf_utils import loss_sphere_init
-from hash_sdf_py.utils.hahsdf_utils import rgb_loss
-from hash_sdf_py.utils.hahsdf_utils import eikonal_loss
-from hash_sdf_py.utils.hahsdf_utils import module_exists
+from hash_sdf_py.utils.hashsdf_utils import get_frames_cropped
+from hash_sdf_py.utils.hashsdf_utils import init_losses
+from hash_sdf_py.utils.hashsdf_utils import get_iter_for_anneal
+from hash_sdf_py.utils.hashsdf_utils import loss_sphere_init
+from hash_sdf_py.utils.hashsdf_utils import rgb_loss
+from hash_sdf_py.utils.hashsdf_utils import eikonal_loss
+from hash_sdf_py.utils.hashsdf_utils import module_exists
 from hash_sdf_py.utils.aabb import AABB
 from hash_sdf_py.callbacks.callback_utils import *
 if module_exists("apex"):
@@ -82,6 +82,7 @@ class HyperParamsHashSDF:
     iter_finish_reduce_curv=iter_start_reduce_curv+1001
     lr_milestones=[100000,150000,180000,190000]
     iter_finish_training=200000
+    forced_variance_finish=0.8
     use_occupancy_grid=True
     nr_samples_bg=32
     min_dist_between_samples=0.0001
@@ -101,7 +102,7 @@ hyperparams=HyperParamsHashSDF()
 
 
 
-def run_net(args, tensor_reel, hyperparams, ray_origins, ray_dirs, img_indices, model_sdf, model_rgb, model_bg, model_colorcal, occupancy_grid, iter_nr_for_anneal,  cos_anneal_ratio, forced_variance):
+def run_net(args, hyperparams, ray_origins, ray_dirs, img_indices, model_sdf, model_rgb, model_bg, model_colorcal, occupancy_grid, iter_nr_for_anneal,  cos_anneal_ratio, forced_variance):
     with torch.set_grad_enabled(False):
         ray_points_entry, ray_t_entry, ray_points_exit, ray_t_exit, does_ray_intersect_box=model_sdf.boundary_primitive.ray_intersection(ray_origins, ray_dirs)
         TIME_START("create_samples")
@@ -162,7 +163,7 @@ def run_net(args, tensor_reel, hyperparams, ray_origins, ray_dirs, img_indices, 
     return pred_rgb, pred_rgb_bg, pred_normals, sdf_gradients, weights_sum, fg_ray_samples_packed
 
 #does forward pass through the model but breaks the rays up into chunks so that we don't run out of memory. Useful for rendering a full img
-def run_net_in_chunks(frame, chunk_size, args, tensor_reel, hyperparams, model_sdf, model_rgb, model_bg, occupancy_grid, iter_nr_for_anneal, cos_anneal_ratio, forced_variance):
+def run_net_in_chunks(frame, chunk_size, args, hyperparams, model_sdf, model_rgb, model_bg, occupancy_grid, iter_nr_for_anneal, cos_anneal_ratio, forced_variance):
     ray_origins_full, ray_dirs_full=model_rgb.create_rays(frame, rand_indices=None)
     nr_chunks=math.ceil( ray_origins_full.shape[0]/chunk_size)
     ray_origins_list=torch.chunk(ray_origins_full, nr_chunks)
@@ -177,8 +178,7 @@ def run_net_in_chunks(frame, chunk_size, args, tensor_reel, hyperparams, model_s
         nr_rays_chunk=ray_origins.shape[0]
     
         #run net 
-        # pred_rgb, pred_rgb_bg, weights_sum, samples_fg=run_net(args, tensor_reel, hyperparams, ray_origins, ray_dirs, None, model, model_bg, None, occupancy_grid, iter_nr) 
-        pred_rgb, pred_rgb_bg, pred_normals, sdf_gradients, weights_sum, fg_ray_samples_packed  =run_net(args, tensor_reel, hyperparams, ray_origins, ray_dirs, None, model_sdf, model_rgb, model_bg, None, occupancy_grid, iter_nr_for_anneal, cos_anneal_ratio, forced_variance)
+        pred_rgb, pred_rgb_bg, pred_normals, sdf_gradients, weights_sum, fg_ray_samples_packed  =run_net(args, hyperparams, ray_origins, ray_dirs, None, model_sdf, model_rgb, model_bg, None, occupancy_grid, iter_nr_for_anneal, cos_anneal_ratio, forced_variance)
 
 
         #accumulat the rgb and weights_sum
@@ -202,7 +202,7 @@ def run_net_in_chunks(frame, chunk_size, args, tensor_reel, hyperparams, model_s
 
     return pred_rgb_img, pred_rgb_bg_img, pred_normals_img, pred_weights_sum_img
    
-def run_net_sphere_traced(frame, args, tensor_reel, hyperparams, model_sdf, model_rgb, model_bg, occupancy_grid, iter_nr_for_anneal, cos_anneal_ratio, forced_variance,  nr_sphere_traces, sdf_multiplier, sdf_converged_tresh):
+def run_net_sphere_traced(frame, args, hyperparams, model_sdf, model_rgb, model_bg, occupancy_grid, iter_nr_for_anneal, cos_anneal_ratio, forced_variance,  nr_sphere_traces, sdf_multiplier, sdf_converged_tresh):
     ray_origins, ray_dirs=model_rgb.create_rays(frame, rand_indices=None)
   
     ray_end, ray_end_sdf, ray_end_gradient, geom_feat_end, traced_samples_packed=sphere_trace(nr_sphere_traces, ray_origins, ray_dirs, model_sdf, return_gradients=True, sdf_multiplier=sdf_multiplier, sdf_converged_tresh=sdf_converged_tresh, occupancy_grid=occupancy_grid)
@@ -324,7 +324,7 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
         else:
             with torch.set_grad_enabled(False):
                 cos_anneal_ratio=map_range_val(iter_nr_for_anneal, 0.0, hyperparams.forced_variance_finish_iter, 0.0, 1.0)
-                forced_variance=map_range_val(iter_nr_for_anneal, 0.0, hyperparams.forced_variance_finish_iter, 0.3, 0.8)
+                forced_variance=map_range_val(iter_nr_for_anneal, 0.0, hyperparams.forced_variance_finish_iter, 0.3, hyperparams.forced_variance_finish)
 
                 ray_origins, ray_dirs, gt_selected, gt_mask, img_indices=HashSDF.random_rays_from_reel(tensor_reel, nr_rays_to_create) 
                 ray_points_entry, ray_t_entry, ray_points_exit, ray_t_exit, does_ray_intersect_box=aabb.ray_intersection(ray_origins, ray_dirs)
@@ -332,7 +332,7 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
 
 
             TIME_START("run_net")
-            pred_rgb, pred_rgb_bg, pred_normals, sdf_gradients, weights_sum, fg_ray_samples_packed  =run_net(args, tensor_reel, hyperparams, ray_origins, ray_dirs, img_indices, model_sdf, model_rgb, model_bg, model_colorcal, occupancy_grid, iter_nr_for_anneal,  cos_anneal_ratio, forced_variance)
+            pred_rgb, pred_rgb_bg, pred_normals, sdf_gradients, weights_sum, fg_ray_samples_packed  =run_net(args, hyperparams, ray_origins, ray_dirs, img_indices, model_sdf, model_rgb, model_bg, model_colorcal, occupancy_grid, iter_nr_for_anneal,  cos_anneal_ratio, forced_variance)
             TIME_END("run_net")
             
 
@@ -471,9 +471,9 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
                 use_volumetric_render=False
                 if use_volumetric_render:
                     chunk_size=50*50
-                    pred_rgb_img, pred_rgb_bg_img, pred_normals_img, pred_weights_sum_img=run_net_in_chunks(frame, chunk_size, args, tensor_reel, hyperparams, model_sdf, model_rgb, model_bg, occupancy_grid, iter_nr_for_anneal, cos_anneal_ratio, forced_variance)
+                    pred_rgb_img, pred_rgb_bg_img, pred_normals_img, pred_weights_sum_img=run_net_in_chunks(frame, chunk_size, args, hyperparams, model_sdf, model_rgb, model_bg, occupancy_grid, iter_nr_for_anneal, cos_anneal_ratio, forced_variance)
                 else:
-                    pred_rgb_img, pred_rgb_bg_img, pred_normals_img, pred_weights_sum_img=run_net_sphere_traced(frame, args, tensor_reel, hyperparams, model_sdf, model_rgb, model_bg, occupancy_grid, iter_nr_for_anneal, cos_anneal_ratio, forced_variance,  nr_sphere_traces=15, sdf_multiplier=0.9, sdf_converged_tresh=0.0002)
+                    pred_rgb_img, pred_rgb_bg_img, pred_normals_img, pred_weights_sum_img=run_net_sphere_traced(frame, args, hyperparams, model_sdf, model_rgb, model_bg, occupancy_grid, iter_nr_for_anneal, cos_anneal_ratio, forced_variance,  nr_sphere_traces=15, sdf_multiplier=0.9, sdf_converged_tresh=0.0002)
                 #vis normals
                 pred_normals_img_vis=(pred_normals_img+1.0)*0.5
                 pred_normals_img_vis_alpha=torch.cat([pred_normals_img_vis,pred_weights_sum_img],1)
@@ -505,8 +505,8 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
 
 
                 chunk_size=1000
-                pred_rgb_img, pred_rgb_bg_img, pred_normals_img, pred_weights_sum_img=run_net_in_chunks(frame, chunk_size, args, tensor_reel, hyperparams, model_sdf, model_rgb, model_bg, occupancy_grid, iter_nr_for_anneal, cos_anneal_ratio, forced_variance)
-                # pred_rgb_img, pred_rgb_bg_img, pred_normals_img, pred_weights_sum_img=run_net_sphere_traced(frame, args, tensor_reel, hyperparams, model_sdf, model_rgb, model_bg, occupancy_grid, iter_nr_for_anneal, cos_anneal_ratio, forced_variance,  nr_sphere_traces=15, sdf_multiplier=0.9, sdf_converged_tresh=0.0002)
+                pred_rgb_img, pred_rgb_bg_img, pred_normals_img, pred_weights_sum_img=run_net_in_chunks(frame, chunk_size, args, hyperparams, model_sdf, model_rgb, model_bg, occupancy_grid, iter_nr_for_anneal, cos_anneal_ratio, forced_variance)
+                # pred_rgb_img, pred_rgb_bg_img, pred_normals_img, pred_weights_sum_img=run_net_sphere_traced(frame, args, hyperparams, model_sdf, model_rgb, model_bg, occupancy_grid, iter_nr_for_anneal, cos_anneal_ratio, forced_variance,  nr_sphere_traces=15, sdf_multiplier=0.9, sdf_converged_tresh=0.0002)
                 #vis normals
                 pred_normals_img_vis=(pred_normals_img+1.0)*0.5
                 pred_normals_img_vis_alpha=torch.cat([pred_normals_img_vis,pred_weights_sum_img],1)
@@ -535,8 +535,8 @@ def run():
 
     #argparse
     parser = argparse.ArgumentParser(description='Train sdf and color')
-    parser.add_argument('--dataset', default="", required=True, help='Dataset like bmvs, dtu, multiface')
-    parser.add_argument('--scene', default="", required=True, help='Scene name like dtu_scan24')
+    parser.add_argument('--dataset', required=True, help='Dataset like bmvs, dtu, multiface')
+    parser.add_argument('--scene', required=True, help='Scene name like dtu_scan24')
     parser.add_argument('--comp_name', required=True,  help='Tells which computer are we using which influences the paths for finding the data')
     parser.add_argument('--low_res', action='store_true', help="Use_low res images for training for when you have little GPU memory")
     parser.add_argument('--exp_info', default="", help='Experiment info string useful for distinguishing one experiment for another')

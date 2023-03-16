@@ -1,3 +1,4 @@
+import os
 import torch
 from typing import Optional
 import math
@@ -218,3 +219,19 @@ def color_by_density(density):
 
     return colors_t
 
+def load_from_checkpoint(ckpt_path_full, model_sdf, model_rgb, model_bg, occupancy_grid):
+
+    checkpoint_path_sdf=os.path.join(ckpt_path_full,"sdf_model.pt")
+    checkpoint_path_rgb=os.path.join(ckpt_path_full,"rgb_model.pt")
+    checkpoint_path_bg=os.path.join(ckpt_path_full,"nerf_hash_model_bg.pt")
+    checkpoint_path_grid_values=os.path.join(ckpt_path_full,"grid_values.pt")
+    checkpoint_path_grid_occupancy=os.path.join(ckpt_path_full,"grid_occupancy.pt")
+
+    model_sdf.load_state_dict(torch.load(checkpoint_path_sdf) )
+    model_rgb.load_state_dict(torch.load(checkpoint_path_rgb) )
+    model_bg.load_state_dict(torch.load(checkpoint_path_bg) )
+    model_sdf.eval()
+    model_rgb.eval()
+    model_bg.eval()
+    occupancy_grid.set_grid_values(torch.load( checkpoint_path_grid_values ))
+    occupancy_grid.set_grid_occupancy(torch.load( checkpoint_path_grid_occupancy  ))

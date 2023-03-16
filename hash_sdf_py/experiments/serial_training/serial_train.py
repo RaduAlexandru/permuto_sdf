@@ -47,7 +47,7 @@ def run():
 
     #get the checkpoints path which will be at the root of the hash_sdf package 
     hash_sdf_root=os.path.dirname(os.path.abspath(hash_sdf.__file__))
-    checkpoint_path=os.path.join(hash_sdf_root, "checkpoints")
+    checkpoint_path=os.path.join(hash_sdf_root, "checkpoints/serial_train")
     os.makedirs(checkpoint_path, exist_ok=True)
 
     
@@ -93,51 +93,6 @@ def run():
 
         #start training 
         train(args, config_path, hyperparams, train_params, loader_train, experiment_name, with_viewer, checkpoint_path, tensor_reel)
-
-
-
-        # if use_home:
-        #     if model_type=="hashsdf":
-        #         checkpoint_path="/media/rosu/Data/phd/c_ws/src/phenorob/instant_ngp_2/checkpoints/batch_training_v7_NoLipshitzJustWD/"+dataset_name+"/"+training_config
-        #     elif model_type=="ingp":
-        #         checkpoint_path="/media/rosu/Data/phd/c_ws/src/phenorob/instant_ngp_2/checkpoints/ingp/"+dataset_name+"/"+training_config
-        #     elif model_type=="neus":
-        #         checkpoint_path="/media/rosu/Data/phd/c_ws/src/phenorob/instant_ngp_2/checkpoints/neus/"+dataset_name+"/"+training_config
-                
-        # else:
-        #     if model_type=="hashsdf":
-        #         checkpoint_path="/home/user/rosu/c_ws/src/instant_ngp_2/checkpoints/batch_training_v7_NoLipshitzJustWD/"+dataset_name+"/"+training_config
-        #     elif model_type=="ingp":
-        #         checkpoint_path="/home/user/rosu/c_ws/src/instant_ngp_2/checkpoints/ingp/"+dataset_name+"/"+training_config
-        #     elif model_type=="neus":
-        #         checkpoint_path="/home/user/rosu/c_ws/src/instant_ngp_2/checkpoints/neus/"+dataset_name+"/"+training_config
-
-
-
-        # #start training
-        # print("start training")
-        # if model_type=="hashsdf":
-        #     train(args, config_path, loader_train, frames_train, experiment_name, dataset_name,  with_viewer, with_tensorboard, save_checkpoint, checkpoint_path, tensor_reel, 1e-3, 50000 ,[100000,150000,180000,190000], 200000)
-        # elif model_type=="ingp":
-        #     train_ingp(args, config_path, loader_train, experiment_name, dataset_name,  with_viewer, with_tensorboard, save_checkpoint, checkpoint_path, tensor_reel, 1e-2, [60000,70000,80000,90000], 100000)
-        # elif model_type=="neus":
-        #     # train_neus(args, config_path, loader_train, experiment_name, dataset_name,  with_viewer, with_tensorboard, save_checkpoint, checkpoint_path, tensor_reel, 1e-2, [60000,70000,80000,90000], 100000)
-        #     train_neus(args, config_path, loader_train, experiment_name, dataset_name,  with_viewer, with_tensorboard, save_checkpoint, checkpoint_path, tensor_reel, 1e-2, 300000) #the lr doesnt actually matter here
-        # else:
-        #     print("Now known model type", model_type)
-        #     exit(1)
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
