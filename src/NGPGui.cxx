@@ -41,7 +41,7 @@ NGPGui::NGPGui(const std::shared_ptr<easy_pbr::Viewer>& view):
     m_isolines_layer_z_coord(0.0),
     m_compute_full_layer(false),
     m_isoline_width(0.005),
-    m_distance_between_isolines(0.06),
+    m_distance_between_isolines(0.03),
     // m_use_only_dense_grid(false),
     // m_spp(50),
     // m_render_mitsuba(false),

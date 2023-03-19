@@ -432,7 +432,7 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
 
 
         #save checkpoint
-        if train_params.save_checkpoint() and phase.iter_nr%5000==0:
+        if train_params.save_checkpoint() and phase.iter_nr%10000==0:
             model_sdf.save(checkpoint_path, experiment_name, phase.iter_nr)
             model_rgb.save(checkpoint_path, experiment_name, phase.iter_nr)
             model_bg.save(checkpoint_path, experiment_name, phase.iter_nr, additional_name="_bg")

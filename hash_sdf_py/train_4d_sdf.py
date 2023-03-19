@@ -146,7 +146,7 @@ def run():
         ngp_gui=NGPGui.create(view)
         view.m_camera.from_string(" 1.16039 0.262138 0.893686  -0.06185  0.470286 0.0330563 0.879719 -0.0700771  0.0530106  0.0714673 60 0.0502494 5024.94")
 
-    experiment_name="4d_sdf_def"
+    experiment_name="4d"
 
 
     #create bounding box for the scene 
@@ -159,6 +159,8 @@ def run():
     sequence_path=os.path.join(package_root,"./data/horse_gallop")
     assert os.path.exists(sequence_path), "The sequence of meshes path does not exists. Please unzip the corresponding folder from the ./data"
     gt_points_time, gt_normals=load_mesh_sequence(sequence_path)
+
+    checkpoint_path=os.path.join(package_root, "checkpoints")
 
 
 
@@ -227,6 +229,10 @@ def run():
         optimizer.step()
 
 
+
+        if train_params.save_checkpoint() and (phase.iter_nr%5000==0 or phase.iter_nr==1):
+            model.save(checkpoint_path, experiment_name, phase.iter_nr)
+
         #visualize the sdf by sphere tracing
         if phase.iter_nr%100==0 or phase.iter_nr==1 or ngp_gui.m_control_view:
             with torch.set_grad_enabled(False):
@@ -259,8 +265,7 @@ def run():
                 Gui.show(tensor2mat(ray_end_normal_img), "ray_end_normal_img")
 
 
-        if train_params.save_checkpoint() and (phase.iter_nr%5000==0 or phase.iter_nr==1):
-            model.save(package_root, "4d", phase.iter_nr)
+       
 
         #finally just update the opengl viewer
         with torch.set_grad_enabled(False):
