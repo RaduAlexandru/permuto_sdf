@@ -288,7 +288,6 @@ def leaky_relu_init(m, negative_slope=0.2):
         return
 
   
-
     m.weight.data.uniform_(-std * np.sqrt(3.0), std * np.sqrt(3.0))
     if m.bias is not None:
         m.bias.data.zero_()

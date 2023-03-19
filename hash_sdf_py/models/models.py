@@ -57,7 +57,7 @@ class LipshitzMLP(torch.nn.Module):
         self.last_layer_linear=last_layer_linear
      
 
-        self.layers=torch.nn.ParameterList()
+        self.layers=torch.nn.ModuleList()
         # self.layers=[]
         for i in range(len(nr_out_channels_per_layer)):
             cur_out_channels=nr_out_channels_per_layer[i]

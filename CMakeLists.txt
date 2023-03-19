@@ -225,7 +225,8 @@ else()
 endif()
 list(APPEND CUDA_NVCC_FLAGS "--extended-lambda")
 list(APPEND CUDA_NVCC_FLAGS "--expt-relaxed-constexpr")
-list(APPEND CUDA_NVCC_FLAGS "-Xcudafe=--diag_suppress=20236")
+# list(APPEND CUDA_NVCC_FLAGS "-Xcudafe=--diag_suppress=20236")
+list(APPEND CUDA_NVCC_FLAGS "--disable-warnings") #eigen throws too many warnings and the previous line with --diag_suppress=20236 doesn't work on all cuda versions
 
 
 

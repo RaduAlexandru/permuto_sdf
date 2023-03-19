@@ -15,7 +15,7 @@ from dataloaders import *
 import hash_sdf
 from hash_sdf  import TrainParams
 from hash_sdf_py.utils.common_utils import create_dataloader
-from hash_sdf_py.utils.hahsdf_utils import get_frames_cropped
+from hash_sdf_py.utils.hashsdf_utils import get_frames_cropped
 from hash_sdf_py.train_hashsdf import train
 from hash_sdf_py.train_hashsdf import HyperParamsHashSDF
 import hash_sdf_py.paths.list_of_training_scenes as list_scenes
