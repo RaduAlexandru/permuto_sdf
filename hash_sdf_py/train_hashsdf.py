@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 
+#trains hashsdf to recover geometry as sdf and color given only posed images
+# CALL with ./hash_sdf_py/train_hashsdf.py --dataset dtu --scene dtu_scan24 --comp_name comp_1 --exp_info default
+
 import torch
 import torch.nn.functional as F
 
@@ -350,8 +353,8 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
             #curvature loss
             loss_curvature=torch.tensor(0)
             global_weight_curvature=map_range_val(iter_nr_for_anneal, hyperparams.iter_start_reduce_curv, hyperparams.iter_finish_reduce_curv, 1.0, 0.000) #once we are converged onto good geometry we can safely descrease it's weight so we learn also high frequency detail geometry.
-            # if global_weight_curvature>0.0:
-            if True:
+            if global_weight_curvature>0.0:
+            # if True:
                 sdf_shifted, sdf_curvature=model_sdf.get_sdf_and_curvature_1d_precomputed_gradient_normal_based( fg_ray_samples_packed.samples_pos, sdf_gradients, iter_nr_for_anneal)
                 loss_curvature=(torch.clamp(sdf_curvature,max=0.5).abs().view(-1)   ).mean() 
                 loss+=loss_curvature* hyperparams.curvature_weight*global_weight_curvature
