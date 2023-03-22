@@ -21,9 +21,12 @@ from hash_sdf_py.utils.sdf_utils import sdf_loss
 from hash_sdf_py.utils.sdf_utils import sphere_trace
 from hash_sdf_py.utils.sdf_utils import filter_unconverged_points
 from hash_sdf_py.utils.nerf_utils import create_rays_from_frame
+from hash_sdf_py.utils.common_utils import lin2nchw
 from hash_sdf_py.utils.common_utils import show_points
 from hash_sdf_py.utils.common_utils import tex2img
 from hash_sdf_py.utils.common_utils import colormap
+from hash_sdf_py.utils.common_utils import rotate_normals_to_cam_frame
+from hash_sdf_py.paths.data_paths import *
 from hash_sdf_py.utils.aabb import AABB
 
 from hash_sdf_py.callbacks.callback_utils import *
@@ -139,6 +142,12 @@ def load_mesh_sequence(folder):
 
 
 def run():
+    #argparse
+    parser = argparse.ArgumentParser(description='Train sdf')
+    parser.add_argument('--exp_info', default="", help='Experiment info string useful for distinguishing one experiment for another')
+    parser.add_argument('--comp_name', required=True,  help='Tells which computer are we using which influences the paths for finding the data')
+    args = parser.parse_args()
+
     # #initialize the parameters used for training
     train_params=TrainParams.create(config_path)    
     if with_viewer:
@@ -147,6 +156,8 @@ def run():
         view.m_camera.from_string(" 1.16039 0.262138 0.893686  -0.06185  0.470286 0.0330563 0.879719 -0.0700771  0.0530106  0.0714673 60 0.0502494 5024.94")
 
     experiment_name="4d"
+    if args.exp_info:
+        experiment_name+="_"+args.exp_info
 
 
     #create bounding box for the scene 
@@ -154,10 +165,11 @@ def run():
     
 
     #load the sequences of points and normals annotated with time
-    cur_dir=os.path.dirname(os.path.abspath(__file__))
-    package_root=os.path.join(cur_dir,"../")
-    sequence_path=os.path.join(package_root,"./data/horse_gallop")
-    assert os.path.exists(sequence_path), "The sequence of meshes path does not exists. Please unzip the corresponding folder from the ./data"
+    # cur_dir=os.path.dirname(os.path.abspath(__file__))
+    # package_root=os.path.join(cur_dir,"../")
+    # sequence_path=os.path.join(package_root,"./data/horse_gallop")
+    # assert os.path.exists(sequence_path), "The sequence of meshes path does not exists. Please unzip the corresponding folder from the ./data"
+    data_path=data_paths[comp_name]
     gt_points_time, gt_normals=load_mesh_sequence(sequence_path)
 
     checkpoint_path=os.path.join(package_root, "checkpoints")
@@ -256,13 +268,20 @@ def run():
                 ray_end, ray_end_sdf, ray_end_gradient, geom_feat_end, traced_samples_packed=sphere_trace(20, ray_origins, ray_dirs, model, return_gradients=True, sdf_multiplier=0.7, sdf_converged_tresh=0.0002, time_val=ngp_gui.m_time_val)
                 ray_end_converged, ray_end_gradient_converged, is_converged=filter_unconverged_points(ray_end, ray_end_sdf, ray_end_gradient) #leaves only the points that are converged
                 ray_end_normal=F.normalize(ray_end_gradient, dim=1)
+                ray_end_normal_img=lin2nchw(ray_end_normal, frame.height, frame.width)
                 ray_end_normal_vis=(ray_end_normal+1.0)*0.5
                 show_points(ray_end, "ray_end", color_per_vert=ray_end_normal_vis, normal_per_vert=ray_end_normal)
                 ray_end_normal=F.normalize(ray_end_gradient_converged, dim=1)
                 ray_end_normal_vis=(ray_end_normal+1.0)*0.5
                 ray_end_normal_tex=ray_end_normal_vis.view(vis_height, vis_width, 3)
-                ray_end_normal_img=tex2img(ray_end_normal_tex)
-                Gui.show(tensor2mat(ray_end_normal_img), "ray_end_normal_img")
+                ray_end_normal_img_vis=tex2img(ray_end_normal_tex)
+                Gui.show(tensor2mat(ray_end_normal_img_vis).rgb2bgr(), "ray_end_normal_img_vis")
+                #normals view_coords
+                ray_end_normal_viewcoords=rotate_normals_to_cam_frame(ray_end_normal_img, frame)
+                is_converged_img=lin2nchw(is_converged, frame.height, frame.width)
+                ray_end_normal_viewcoords[~is_converged_img.bool().repeat(1,3,1,1)]=0.0
+                ray_end_normal_viewcoords_vis=(ray_end_normal_viewcoords+1.0)*0.5
+                Gui.show(tensor2mat(ray_end_normal_viewcoords_vis).rgb2bgr(), "ray_end_normal_img_viewcoords")
 
 
        
