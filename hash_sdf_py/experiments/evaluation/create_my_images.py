@@ -179,7 +179,7 @@ def run():
                 pred_normals_viewcoords_mat=tensor2mat(pred_normals_viewcoords_img_vis.detach()).rgba2bgra().to_cv8u()
 
                 #output path
-                out_img_path=os.path.join(hash_sdf_root,"results/output_permutosdf_images",args.dataset, config_training, cur_mode, scan_name)
+                out_img_path=os.path.join(hash_sdf_root,"results/output_permuto_sdf_images",args.dataset, config_training, cur_mode, scan_name)
 
                 #write images to file
                 os.makedirs(  os.path.join(out_img_path,"rgb"), exist_ok=True)

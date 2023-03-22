@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 #calculates psnr for the task of novel view synthesis. 
-# It assumes we have created our images using create_my_images.py and they are at PACKAGE_ROOT/results/output_permutosdf_images/
+# It assumes we have created our images using create_my_images.py and they are at PACKAGE_ROOT/results/output_permuto_sdf_images/
 #we can only evaluate the models that were trained without mask supervision because neus only provides those results
 
 ####Call with######
@@ -167,7 +167,7 @@ def run():
     #path of my images
     hash_sdf_root=os.path.dirname(os.path.abspath(hash_sdf.__file__))
     results_path=os.path.join(hash_sdf_root, "results")
-    my_imgs_path=os.path.join(results_path,"output_permutosdf_images")
+    my_imgs_path=os.path.join(results_path,"output_permuto_sdf_images")
 
 
     #get for each scene

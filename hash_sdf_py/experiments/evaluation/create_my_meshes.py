@@ -155,7 +155,7 @@ def run():
         extracted_mesh=extract_mesh_and_transform_to_original_tf(model_sdf, nr_points_per_dim, loader, aabb)
         
         #output path
-        out_mesh_path=os.path.join(hash_sdf_root,"results/output_permutosdf_meshes",args.dataset, config_training)
+        out_mesh_path=os.path.join(hash_sdf_root,"results/output_permuto_sdf_meshes",args.dataset, config_training)
         os.makedirs(out_mesh_path, exist_ok=True)
 
         # #write my mesh

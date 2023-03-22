@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 #get chamfer distance comparisons on DTU between gt_mesh, ours
-# It assumes we have created our meshes using create_my_meshes.py and they are at PACKAGE_ROOT/results/output_permutosdf_meshes/
+# It assumes we have created our meshes using create_my_meshes.py and they are at PACKAGE_ROOT/results/output_permuto_sdf_meshes/
 
 ####Call with######
 # ./hash_sdf_py/experiments/evaluation/evaluate_chamfer_distance.py --comp_name comp_1  [--with_mask]
@@ -190,7 +190,7 @@ def run():
     #path of my meshes
     hash_sdf_root=os.path.dirname(os.path.abspath(hash_sdf.__file__))
     results_path=os.path.join(hash_sdf_root, "results")
-    my_meshes_path=os.path.join(results_path,"output_permutosdf_meshes")
+    my_meshes_path=os.path.join(results_path,"output_permuto_sdf_meshes")
     #path for gt
     gt_meshes_path="/media/rosu/Data/data/dtu/data_prepared_for_gt"
     #outputs path where to dump the results after the evaluation
