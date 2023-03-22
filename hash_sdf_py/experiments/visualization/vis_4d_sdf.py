@@ -47,8 +47,9 @@ config_path=os.path.join( os.path.dirname( os.path.realpath(__file__) ) , '../..
 
 def run():
     # #initialize the parameters used for training
-    train_params=TrainParams.create(config_path)    
-    if train_params.with_viewer():
+    train_params=TrainParams.create(config_path)
+    with_viewer=True    
+    if with_viewer:
         view=Viewer.create(config_path)
         ngp_gui=NGPGui.create(view)
         # view.m_camera.from_string("-0.837286  0.360068  0.310824 -0.0496414    -0.5285  -0.030986 0.846901   0.11083  0.235897 -0.152857 60 0.0502494 5024.94")
@@ -69,7 +70,8 @@ def run():
     cur_dir=os.path.dirname(os.path.abspath(__file__))
     package_root=os.path.join(cur_dir,"../../../")
     # chkpt_path=os.path.join(package_root, "checkpoints/4d/400000/models/sdf_model.pt")
-    chkpt_path=os.path.join(package_root, "checkpoints/4d_v2/300000/models/sdf_model.pt")
+    # chkpt_path=os.path.join(package_root, "checkpoints/4d_v2/300000/models/sdf_model.pt")
+    chkpt_path=os.path.join(package_root, "checkpoints/4d_v3/265000/models/sdf_model.pt")
     model.load_state_dict(torch.load(chkpt_path))
 
 
@@ -100,7 +102,7 @@ def run():
             
 
             #sphere trace those pixels
-            ray_end, ray_end_sdf, ray_end_gradient, ray_end_t=sphere_trace(40, ray_origins, ray_dirs, model, return_gradients=True, sdf_multiplier=0.3, sdf_converged_tresh=0.002, time_val=time_val)
+            ray_end, ray_end_sdf, ray_end_gradient, geom_feat_end, traced_samples_packed=sphere_trace(40, ray_origins, ray_dirs, model, return_gradients=True, sdf_multiplier=0.3, sdf_converged_tresh=0.002, time_val=time_val)
             ray_end_converged, ray_end_gradient_converged, is_converged=filter_unconverged_points(ray_end, ray_end_sdf, ray_end_gradient) #leaves only the points that are converged
             ray_end_normal=F.normalize(ray_end_gradient, dim=1)
             ray_end_normal_vis=(ray_end_normal+1.0)*0.5
@@ -118,18 +120,19 @@ def run():
 
             #write to file 
             if(frame_nr<nr_frames):
-                out_img_path=os.path.join(package_root,"results/4d_v2/")
+                out_img_path=os.path.join(package_root,"results/4d_v3/")
                 if not os.path.exists(out_img_path):
                     print("path does not exists: ", out_img_path )
                     exit(1)
                 tensor2mat(ray_end_normal_img_alpha).to_cv8u().to_file(os.path.join(out_img_path,str(frame_nr)+".png"))
+                print("rendering to ", out_img_path, " frame_nr ", frame_nr)
 
 
             frame_nr+=1              
 
             #finally just update the opengl viewer
             with torch.set_grad_enabled(False):
-                if train_params.with_viewer():
+                if with_viewer:
                     view.update()
 
 
