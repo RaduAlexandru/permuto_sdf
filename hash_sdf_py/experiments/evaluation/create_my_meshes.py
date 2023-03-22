@@ -11,7 +11,7 @@
 #and you need to modify conf/wmask to point to the DTU dataset and the checkpoints path
 
 ###CALL with 
-# ./hash_sdf_py/experiments/evaluation/create_my_meshes.py --dataset dtu --comp_name comp_1 --res 1800  [--with_mask] 
+# ./hash_sdf_py/experiments/evaluation/create_my_meshes.py --dataset dtu --comp_name comp_1 --res 2000  [--with_mask] 
 
 
 import torch
@@ -101,7 +101,7 @@ def run():
     results_path=os.path.join(hash_sdf_root, "results")
     os.makedirs(results_path, exist_ok=True)
     # ckpts
-    checkpoint_path=os.path.join(hash_sdf_root, "checkpoints/serial_train")
+    checkpoint_path=os.path.join(hash_sdf_root, "checkpoints")
 
 
 
@@ -155,7 +155,7 @@ def run():
         extracted_mesh=extract_mesh_and_transform_to_original_tf(model_sdf, nr_points_per_dim, loader, aabb)
         
         #output path
-        out_mesh_path=os.path.join(hash_sdf_root,"results/output_hashsdf_meshes",args.dataset, config_training)
+        out_mesh_path=os.path.join(hash_sdf_root,"results/output_permutosdf_meshes",args.dataset, config_training)
         os.makedirs(out_mesh_path, exist_ok=True)
 
         # #write my mesh

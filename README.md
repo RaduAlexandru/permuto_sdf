@@ -6,7 +6,7 @@
 [PermutoSDF: Accurate Implicit Surfaces with Fast Local Features on Permutohedral Lattices](https://radualexandru.github.io/permuto_sdf)
 <br>
  [Radu Alexandru Rosu](https://www.ais.uni-bonn.de/%7Erosu/),
- [Sven Behnke](https://www.ais.uni-bonn.de/behnke/),
+ [Sven Behnke](https://www.ais.uni-bonn.de/behnke/)
  <br>
  University of Bonn, Autonomous Intelligent Systems
 

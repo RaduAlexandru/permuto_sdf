@@ -67,7 +67,7 @@ def run():
     results_path=os.path.join(hash_sdf_root, "results")
     os.makedirs(results_path, exist_ok=True)
     # ckpts
-    checkpoint_path=os.path.join(hash_sdf_root, "checkpoints/serial_train")
+    checkpoint_path=os.path.join(hash_sdf_root, "checkpoints")
 
 
 
@@ -77,7 +77,7 @@ def run():
     print("args.with_mask", args.with_mask)
     print("results_path",results_path)
     print("with_viewer", with_viewer)
-    chunk_size=1000
+    chunk_size=3000
     iter_nr_for_anneal=9999999
     cos_anneal_ratio=1.0
     low_res=False
@@ -179,15 +179,15 @@ def run():
                 pred_normals_viewcoords_mat=tensor2mat(pred_normals_viewcoords_img_vis.detach()).rgba2bgra().to_cv8u()
 
                 #output path
-                out_img_path=os.path.join(hash_sdf_root,"results/output_hashsdf_images",args.dataset, config_training, cur_mode, scan_name)
+                out_img_path=os.path.join(hash_sdf_root,"results/output_permutosdf_images",args.dataset, config_training, cur_mode, scan_name)
 
                 #write images to file
                 os.makedirs(  os.path.join(out_img_path,"rgb"), exist_ok=True)
-                os.makedirs(  os.path.join(out_img_path,"normals"), exist_ok=True)
+                # os.makedirs(  os.path.join(out_img_path,"normals"), exist_ok=True)
                 os.makedirs(  os.path.join(out_img_path,"normals_viewcoords"), exist_ok=True)
 
                 pred_img_mat.to_file(   os.path.join(out_img_path,"rgb", str(frame.frame_idx)+".png"  )  )
-                pred_normals_mat.to_file(   os.path.join(out_img_path,"normals", str(frame.frame_idx)+".png"  )  )
+                # pred_normals_mat.to_file(   os.path.join(out_img_path,"normals", str(frame.frame_idx)+".png"  )  )
                 pred_normals_viewcoords_mat.to_file(   os.path.join(out_img_path,"normals_viewcoords", str(frame.frame_idx)+".png"  )  )
 
 
