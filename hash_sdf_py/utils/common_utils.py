@@ -461,7 +461,7 @@ def create_dataloader(config_path, dataset_name, scene_name, low_res, comp_name,
         loader_test.start()
     elif dataset_name=="dtu":
         loader_train=DataLoaderDTU(config_path)
-        loader_train.set_dataset_path(os.path.join(data_path,"neus_data/data_DTU"))
+        loader_train.set_dataset_path(os.path.join(data_path,"data_DTU"))
         if low_res:
             loader_train.set_subsample_factor(4)
         loader_train.set_mode_train()
@@ -471,7 +471,7 @@ def create_dataloader(config_path, dataset_name, scene_name, low_res, comp_name,
         loader_train.start()
         #the test one has the same scene as the train one 
         loader_test=DataLoaderDTU(config_path)
-        loader_test.set_dataset_path(os.path.join(data_path,"neus_data/data_DTU"))
+        loader_test.set_dataset_path(os.path.join(data_path,"data_DTU"))
         if low_res:
             loader_test.set_subsample_factor(4)
         loader_test.set_mode_test()
@@ -483,7 +483,7 @@ def create_dataloader(config_path, dataset_name, scene_name, low_res, comp_name,
         loader_train=DataLoaderDTU(config_path)
         loader_train.set_mode_train()
         loader_train.set_load_mask(with_mask)
-        loader_train.set_dataset_path(os.path.join(data_path,"neus_data/data_BlendedMVS"))
+        loader_train.set_dataset_path(os.path.join(data_path,"data_BlendedMVS"))
         if low_res: 
             loader_train.set_subsample_factor(4)
         if scene_name:
@@ -493,7 +493,7 @@ def create_dataloader(config_path, dataset_name, scene_name, low_res, comp_name,
         loader_test=DataLoaderDTU(config_path)
         loader_test.set_mode_test()
         loader_test.set_load_mask(with_mask)
-        loader_test.set_dataset_path(os.path.join(data_path,"neus_data/data_BlendedMVS"))
+        loader_test.set_dataset_path(os.path.join(data_path,"data_BlendedMVS"))
         if low_res:
             loader_test.set_subsample_factor(4)
         if scene_name:
@@ -567,3 +567,21 @@ def linear2color_corr(img, dim: int = -1):
         0,
         2,
     )
+
+def rotate_normals_to_cam_frame(pred_normals_img, frame):
+
+    cam=Camera()
+    cam.from_frame(frame)
+    tf_cam_world=cam.view_matrix_affine() 
+    tf_cam_world_t=torch.from_numpy(tf_cam_world.matrix()).cuda()
+    tf_cam_world_R=torch.from_numpy(tf_cam_world.matrix()).cuda()[0:3, 0:3]
+    pred_normals_lin=nchw2lin(pred_normals_img)
+    pred_normals_lin_0=torch.cat([pred_normals_lin, torch.zeros_like(pred_normals_lin)[:,0:1]  ],1)
+    pred_normals_viewcoords_lin=torch.matmul(tf_cam_world_R,pred_normals_lin.t()).t()
+    pred_normals_viewcoords_lin=torch.nn.functional.normalize(pred_normals_viewcoords_lin,dim=1)
+    # pred_normals_viewcoords_lin_vis=(pred_normals_viewcoords_lin+1)*0.5
+    pred_normals_viewcoords_img=lin2nchw(pred_normals_viewcoords_lin, frame.height, frame.width)
+    # pred_normals_viewcoords_img=torch.cat([pred_normals_viewcoords_img,pred_weights_sum_img],1) #concat alpha
+    # pred_normals_viewcoords_mat=tensor2mat(pred_normals_viewcoords_img_vis.detach()).rgba2bgra().to_cv8u()
+
+    return pred_normals_viewcoords_img
