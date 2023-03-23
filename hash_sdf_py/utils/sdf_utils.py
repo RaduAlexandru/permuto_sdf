@@ -38,8 +38,14 @@ def sdf_loss(surface_sdf, surface_sdf_gradients, offsurface_sdf, offsurface_sdf_
 	#points off the surface should have sdf that are not very close to zero
 	loss_offsurface_high_sdf=torch.exp(-1e2 * torch.abs(offsurface_sdf))
 
-	# full_loss= eikonal_loss.mean()*5e1 +  loss_surface_normal.mean()*1e2  + loss_surface_sdf.mean()*3e3  + loss_offsurface_high_sdf.mean()*1e2 #works
-	full_loss= eikonal_loss.mean()*5e1 +  loss_surface_normal.mean()*1e2  + loss_surface_sdf.mean()*3e3  + loss_offsurface_high_sdf.mean()*1e2
+
+
+	full_loss= eikonal_loss.mean()*5e1 +  loss_surface_normal.mean()*1e2  + loss_surface_sdf.mean()*3e3  + loss_offsurface_high_sdf.mean()*1e2 #default
+	#the following help with getting a smoother sdf that can be better visualizes with isolines
+	# full_loss= eikonal_loss.mean()*15e1 +  loss_surface_normal.mean()*1e2  + loss_surface_sdf.mean()*3e3  + loss_offsurface_high_sdf.mean()*1e2
+	# full_loss= eikonal_loss.mean()*15e1 +  loss_surface_normal.mean()*1e2  + loss_surface_sdf.mean()*3e3  + loss_offsurface_high_sdf.mean()*5e2
+	# full_loss= eikonal_loss.mean()*30e1 +  loss_surface_normal.mean()*1e2  + loss_surface_sdf.mean()*3e3  + loss_offsurface_high_sdf.mean()*5e2
+	# full_loss= eikonal_loss.mean()*50e1 +  loss_surface_normal.mean()*1e2  + loss_surface_sdf.mean()*3e3  + loss_offsurface_high_sdf.mean()*5e2
 	# full_loss= eikonal_loss.mean()*1e-5 
 
 	# print("full loss", full_loss) 
