@@ -3,7 +3,7 @@
 
 ### [Project Page](https://radualexandru.github.io/permuto_sdf) | [Paper](https://arxiv.org/abs/2211.12562) | [Data](https://drive.google.com/drive/folders/1IcCtveUyQ4sHwVpdyjLt28rAdHYFHmtT?usp=share_link)
 
-[PermutoSDF: Accurate Implicit Surfaces with Fast Local Features on Permutohedral Lattices](https://radualexandru.github.io/permuto_sdf)
+[PermutoSDF: Fast Multi-View Reconstruction with Implicit Surfaces using Permutohedral Lattices](https://radualexandru.github.io/permuto_sdf)
 <br>
  [Radu Alexandru Rosu](https://www.ais.uni-bonn.de/%7Erosu/),
  [Sven Behnke](https://www.ais.uni-bonn.de/behnke/)
@@ -156,8 +156,8 @@ PermutoSDF is provided under the terms of the MIT license (see LICENSE).
 
 ```
 @article{rosu2023permutosdf,
-    title={PermutoSDF: Accurate Implicit Surfaces with 
-            Fast Local Features on Permutohedral Lattices  },
+    title={PermutoSDF: Fast Multi-View Reconstruction with 
+            Implicit Surfaces using Permutohedral Lattices  },
     author={Radu Alexandru Rosu and Sven Behnke},
     journal={CVPR},
     year={2023}
