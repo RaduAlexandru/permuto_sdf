@@ -1,11 +1,11 @@
-#include "hash_sdf/Sphere.cuh"
+#include "permuto_sdf/Sphere.cuh"
 
 //c++
 
 #include "UtilsPytorch.h" //contains torch so it has to be added BEFORE any other include because the other ones might include loguru which gets screwed up if torch was included before it
 
 //my stuff
-#include "hash_sdf/SphereGPU.cuh"
+#include "permuto_sdf/SphereGPU.cuh"
 
 //loguru
 #define LOGURU_REPLACE_GLOG 1

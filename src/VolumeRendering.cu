@@ -1,4 +1,4 @@
-#include "hash_sdf/VolumeRendering.cuh"
+#include "permuto_sdf/VolumeRendering.cuh"
 
 //c++
 // #include <string>
@@ -8,8 +8,8 @@
 // #include "string_utils.h"
 
 //my stuff
-// #include "hash_sdf/HashTable.cuh"
-#include "hash_sdf/VolumeRenderingGPU.cuh"
+// #include "permuto_sdf/HashTable.cuh"
+#include "permuto_sdf/VolumeRenderingGPU.cuh"
 
 
 

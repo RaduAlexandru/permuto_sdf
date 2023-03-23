@@ -1,20 +1,20 @@
-#include "hash_sdf/PyBridge.h"
+#include "permuto_sdf/PyBridge.h"
 
 #include <torch/extension.h>
 #include "torch/torch.h"
 #include "torch/csrc/utils/pybind.h"
 
 //my stuff 
-#include "hash_sdf/HashSDF.cuh"
-#include "hash_sdf/Sphere.cuh"
-#include "hash_sdf/OccupancyGrid.cuh"
-#include "hash_sdf/VolumeRendering.cuh"
-#include "hash_sdf/RaySampler.cuh"
-#include "hash_sdf/RaySamplesPacked.cuh"
-#include "hash_sdf/TrainParams.h"
-// #include "hash_sdf/ModelParams.h"
-// #include "hash_sdf/EvalParams.h"
-#include "hash_sdf/NGPGui.h"
+#include "permuto_sdf/PermutoSDF.cuh"
+#include "permuto_sdf/Sphere.cuh"
+#include "permuto_sdf/OccupancyGrid.cuh"
+#include "permuto_sdf/VolumeRendering.cuh"
+#include "permuto_sdf/RaySampler.cuh"
+#include "permuto_sdf/RaySamplesPacked.cuh"
+#include "permuto_sdf/TrainParams.h"
+// #include "permuto_sdf/ModelParams.h"
+// #include "permuto_sdf/EvalParams.h"
+#include "permuto_sdf/NGPGui.h"
 
 #include "easy_pbr/Viewer.h"
 
@@ -28,22 +28,22 @@ namespace py = pybind11;
 
 
 
-PYBIND11_MODULE(hash_sdf, m) {
+PYBIND11_MODULE(permuto_sdf, m) {
 
 
 
    
 
-    py::class_<HashSDF, std::shared_ptr<HashSDF>   > (m, "HashSDF")
-    .def_static("create", &HashSDF::create<const std::shared_ptr<easy_pbr::Viewer>& > ) //for templated methods like this one we need to explicitly instantiate one of the arguments
-    .def_static("random_rays_from_reel", &HashSDF::random_rays_from_reel ) 
-    .def_static("rays_from_reprojection_reel", &HashSDF::rays_from_reprojection_reel ) 
-    .def_static("spherical_harmonics", &HashSDF::spherical_harmonics ) 
-    .def_static("update_errors_of_matching_indices", &HashSDF::update_errors_of_matching_indices ) 
-    .def_static("meshgrid3d", &HashSDF::meshgrid3d ) 
-    .def_static("low_discrepancy2d_sampling", &HashSDF::low_discrepancy2d_sampling ) 
+    py::class_<PermutoSDF, std::shared_ptr<PermutoSDF>   > (m, "PermutoSDF")
+    .def_static("create", &PermutoSDF::create<const std::shared_ptr<easy_pbr::Viewer>& > ) //for templated methods like this one we need to explicitly instantiate one of the arguments
+    .def_static("random_rays_from_reel", &PermutoSDF::random_rays_from_reel ) 
+    .def_static("rays_from_reprojection_reel", &PermutoSDF::rays_from_reprojection_reel ) 
+    .def_static("spherical_harmonics", &PermutoSDF::spherical_harmonics ) 
+    .def_static("update_errors_of_matching_indices", &PermutoSDF::update_errors_of_matching_indices ) 
+    .def_static("meshgrid3d", &PermutoSDF::meshgrid3d ) 
+    .def_static("low_discrepancy2d_sampling", &PermutoSDF::low_discrepancy2d_sampling ) 
     #ifdef HSDF_WITH_GL
-      .def("render_atributes",  &HashSDF::render_atributes )
+      .def("render_atributes",  &PermutoSDF::render_atributes )
     #endif
     ;
 

@@ -1,4 +1,4 @@
-#include "hash_sdf/RaySampler.cuh"
+#include "permuto_sdf/RaySampler.cuh"
 
 //c++
 // #include <string>
@@ -8,7 +8,7 @@
 // #include "string_utils.h"
 
 //my stuff
-#include "hash_sdf/RaySamplerGPU.cuh"
+#include "permuto_sdf/RaySamplerGPU.cuh"
 
 
 

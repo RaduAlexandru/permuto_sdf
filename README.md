@@ -83,7 +83,7 @@ Now when calling the training routines from the next sections you can add the fl
 <!-- - #### Train PermutoSDF on a certain scene -->
 ## Train PermutoSDF on a certain scene
 ```Shell
-./permuto_sdf_py/train_permutosdf.py \
+./permuto_sdf_py/train_permuto_sdf.py \
 --dataset dtu \
 --scene dtu_scan24 \
 --comp_name comp_3 \
@@ -96,7 +96,7 @@ Other options for this script are:
 --low_res    #loads the images at lower resolution. Useful on machines with lower than 6GB of VRAM
 --with_mask  #Uses the binary mask from DTU or BlendedMVS dataset to ignore the background
 ```
-Additionally you can enable saving of the checkpoints and other logging options by setting to true the flag `save_checkpoint` in `./config/train_permutosdf.cfg`.\
+Additionally you can enable saving of the checkpoints and other logging options by setting to true the flag `save_checkpoint` in `./config/train_permuto_sdf.cfg`.\
 At any point during training you can click inside the GUI on "control_view" in order to move the camera around the scene. \
 <img src="imgs/train_permuto_sdf.png" width="500"/>
 

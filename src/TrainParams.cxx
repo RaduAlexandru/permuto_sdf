@@ -1,4 +1,4 @@
-#include "hash_sdf/TrainParams.h"
+#include "permuto_sdf/TrainParams.h"
 
 //loguru
 #define LOGURU_REPLACE_GLOG 1

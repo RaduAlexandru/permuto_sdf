@@ -1,4 +1,4 @@
-#include "hash_sdf/OccupancyGrid.cuh"
+#include "permuto_sdf/OccupancyGrid.cuh"
 
 //c++
 // #include <string>
@@ -8,8 +8,8 @@
 // #include "string_utils.h"
 
 //my stuff
-// #include "hash_sdf/HashTable.cuh"
-#include "hash_sdf/OccupancyGridGPU.cuh"
+// #include "permuto_sdf/HashTable.cuh"
+#include "permuto_sdf/OccupancyGridGPU.cuh"
 
 
 using torch::Tensor;

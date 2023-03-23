@@ -165,13 +165,13 @@ def find_files(directory, strip, extensions):
     # return 'include/easy_pbr/LabelMngr.h'
 
 setup(
-    name='hash_sdf',
+    name='permuto_sdf',
     version='1.0.0',
     author="Radu Alexandru Rosu",
     author_email="rosu@ais.uni-bonn.de",
-    description="hash_sdf",
+    description="permuto_sdf",
     long_description=long_description,
-    ext_modules=[CMakeExtension('hash_sdf')],
+    ext_modules=[CMakeExtension('permuto_sdf')],
     cmdclass={ 'build_ext':CMakeBuild,
                'install_headers': install_headers,
     },

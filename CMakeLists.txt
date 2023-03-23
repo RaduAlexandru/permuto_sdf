@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.18) 
 
 project(
-    hash_sdf
+    permuto_sdf
     VERSION 1.0
     LANGUAGES CXX CUDA
 )
@@ -23,8 +23,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 
 ####   GLOBAL OPTIONS   ###https://stackoverflow.com/questions/15201064/cmake-conditional-preprocessor-define-on-code
-set(HSDF_CUDA_ARCHITECTURES "" CACHE STRING "Build HashSDF for a specific GPU architecture.")
-option(HSDF_WITH_GL "Compile with GL" OFF) #sometimes when we run headless we would like to disable all the opengl stuff because we are not creating the Viewer and therefore do not initialize a OpenGL context and therefore the HashSDF class cannot create opengl textures or anything like that 
+set(PSDF_CUDA_ARCHITECTURES "" CACHE STRING "Build PermutoSDF for a specific GPU architecture.")
+option(PSDF_WITH_GL "Compile with GL" OFF) #sometimes when we run headless we would like to disable all the opengl stuff because we are not creating the Viewer and therefore do not initialize a OpenGL context and therefore the PermutoSDF class cannot create opengl textures or anything like that 
 
 
 
@@ -60,7 +60,7 @@ include_directories(${TORCH_INCLUDE_DIRS})
 
 
 #pybind
-pybind11_add_module(hash_sdf ${PROJECT_SOURCE_DIR}/src/PyBridge.cxx )
+pybind11_add_module(permuto_sdf ${PROJECT_SOURCE_DIR}/src/PyBridge.cxx )
 
 
 
@@ -78,12 +78,12 @@ endif()
 
 # Adapted from the CMake source code at https://github.com/Kitware/CMake/blob/master/Modules/FindCUDA/select_compute_arch.cmake
 # Simplified to return a semicolon-separated list of the compute capabilities of installed devices
-function(HSDF_AUTODETECT_CUDA_ARCHITECTURES OUT_VARIABLE)
-	if (NOT HSDF_AUTODETECT_CUDA_ARCHITECTURES_OUTPUT)
+function(PSDF_AUTODETECT_CUDA_ARCHITECTURES OUT_VARIABLE)
+	if (NOT PSDF_AUTODETECT_CUDA_ARCHITECTURES_OUTPUT)
 		if (CMAKE_CUDA_COMPILER_LOADED) # CUDA as a language
-			set(file "${PROJECT_BINARY_DIR}/detect_hsdf_cuda_architectures.cu")
+			set(file "${PROJECT_BINARY_DIR}/detect_PSDF_cuda_architectures.cu")
 		else()
-			set(file "${PROJECT_BINARY_DIR}/detect_hsdf_cuda_architectures.cpp")
+			set(file "${PROJECT_BINARY_DIR}/detect_PSDF_cuda_architectures.cpp")
 		endif()
 
 		file(WRITE ${file} ""
@@ -118,15 +118,15 @@ function(HSDF_AUTODETECT_CUDA_ARCHITECTURES OUT_VARIABLE)
 		if (run_result EQUAL 0)
 			# If the user has multiple GPUs with the same compute capability installed, list that capability only once.
 			list(REMOVE_DUPLICATES compute_capabilities)
-			set(HSDF_AUTODETECT_CUDA_ARCHITECTURES_OUTPUT ${compute_capabilities} CACHE INTERNAL "Returned GPU architectures from detect_gpus tool" FORCE)
+			set(PSDF_AUTODETECT_CUDA_ARCHITECTURES_OUTPUT ${compute_capabilities} CACHE INTERNAL "Returned GPU architectures from detect_gpus tool" FORCE)
 		endif()
 	endif()
 
-	if (NOT HSDF_AUTODETECT_CUDA_ARCHITECTURES_OUTPUT)
+	if (NOT PSDF_AUTODETECT_CUDA_ARCHITECTURES_OUTPUT)
 		message(STATUS "Automatic GPU detection failed. Building for Turing and Ampere as a best guess.")
 		set(${OUT_VARIABLE} "75;86" PARENT_SCOPE)
 	else()
-		set(${OUT_VARIABLE} ${HSDF_AUTODETECT_CUDA_ARCHITECTURES_OUTPUT} PARENT_SCOPE)
+		set(${OUT_VARIABLE} ${PSDF_AUTODETECT_CUDA_ARCHITECTURES_OUTPUT} PARENT_SCOPE)
 	endif()
 endfunction()
 
@@ -135,16 +135,16 @@ set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_EXTENSIONS OFF)
 set(CUDA_LINK_LIBRARIES_KEYWORD PUBLIC)
 
-get_directory_property(HSDF_HAS_PARENT PARENT_DIRECTORY)
-if (DEFINED ENV{HSDF_CUDA_ARCHITECTURES})
-	message(STATUS "Obtained CUDA architectures from environment variable HSDF_CUDA_ARCHITECTURES=$ENV{HSDF_CUDA_ARCHITECTURES}")
-	set(CMAKE_CUDA_ARCHITECTURES $ENV{HSDF_CUDA_ARCHITECTURES})
-elseif (HSDF_CUDA_ARCHITECTURES)
-	message(STATUS "Obtained CUDA architectures from CMake variable HSDF_CUDA_ARCHITECTURES=${HSDF_CUDA_ARCHITECTURES}")
-	set(CMAKE_CUDA_ARCHITECTURES ${HSDF_CUDA_ARCHITECTURES})
+get_directory_property(PSDF_HAS_PARENT PARENT_DIRECTORY)
+if (DEFINED ENV{PSDF_CUDA_ARCHITECTURES})
+	message(STATUS "Obtained CUDA architectures from environment variable PSDF_CUDA_ARCHITECTURES=$ENV{PSDF_CUDA_ARCHITECTURES}")
+	set(CMAKE_CUDA_ARCHITECTURES $ENV{PSDF_CUDA_ARCHITECTURES})
+elseif (PSDF_CUDA_ARCHITECTURES)
+	message(STATUS "Obtained CUDA architectures from CMake variable PSDF_CUDA_ARCHITECTURES=${PSDF_CUDA_ARCHITECTURES}")
+	set(CMAKE_CUDA_ARCHITECTURES ${PSDF_CUDA_ARCHITECTURES})
 else()
 	message(STATUS "Obtained CUDA architectures automatically from installed GPUs")
-	HSDF_AUTODETECT_CUDA_ARCHITECTURES(CMAKE_CUDA_ARCHITECTURES)
+	PSDF_AUTODETECT_CUDA_ARCHITECTURES(CMAKE_CUDA_ARCHITECTURES)
 endif()
 
 # If the CUDA version does not support the chosen architecture, target
@@ -194,26 +194,26 @@ list(GET CMAKE_CUDA_ARCHITECTURES 0 MIN_GPU_ARCH)
 string(REPLACE "-virtual" "" MIN_GPU_ARCH "${MIN_GPU_ARCH}")
 
 message(STATUS "Targeting CUDA architectures: ${CMAKE_CUDA_ARCHITECTURES}")
-if (HSDF_HAS_PARENT)
-	set(HSDF_CUDA_ARCHITECTURES ${CMAKE_CUDA_ARCHITECTURES} PARENT_SCOPE)
-	set(HSDF_CUDA_VERSION ${CUDA_VERSION} PARENT_SCOPE)
+if (PSDF_HAS_PARENT)
+	set(PSDF_CUDA_ARCHITECTURES ${CMAKE_CUDA_ARCHITECTURES} PARENT_SCOPE)
+	set(PSDF_CUDA_VERSION ${CUDA_VERSION} PARENT_SCOPE)
 endif()
 
 
 if (CUDA_VERSION VERSION_LESS 10.2)
-	message(FATAL_ERROR "CUDA version too low. hash_sdf require CUDA 10.2 or higher.")
+	message(FATAL_ERROR "CUDA version too low. permuto_sdf require CUDA 10.2 or higher.")
 endif()
 
-list(APPEND HSDF_LIBRARIES cuda)
-list(APPEND HSDF_DEFINITIONS -DHSDF_MIN_GPU_ARCH=${MIN_GPU_ARCH})
-if (HSDF_ALLOW_CUBLAS_CUSOLVER AND CUDA_VERSION VERSION_GREATER_EQUAL 11.0)
+list(APPEND PSDF_LIBRARIES cuda)
+list(APPEND PSDF_DEFINITIONS -DPSDF_MIN_GPU_ARCH=${MIN_GPU_ARCH})
+if (PSDF_ALLOW_CUBLAS_CUSOLVER AND CUDA_VERSION VERSION_GREATER_EQUAL 11.0)
 	# Only compile the shampoo optimizer if
 	# a new enough cuBLAS version is available.
-	list(APPEND HSDF_LIBRARIES cublas)
+	list(APPEND PSDF_LIBRARIES cublas)
 endif()
 
-if (HSDF_HAS_PARENT)
-	set(HSDF_DEFINITIONS ${HSDF_DEFINITIONS} PARENT_SCOPE)
+if (PSDF_HAS_PARENT)
+	set(PSDF_DEFINITIONS ${PSDF_DEFINITIONS} PARENT_SCOPE)
 endif()
 
 if (MSVC)
@@ -235,11 +235,11 @@ list(APPEND CUDA_NVCC_FLAGS "--disable-warnings") #eigen throws too many warning
 
 
 ###############################################################################
-# hashsdf library, samples, and benchmarks
+# PermutoSDF library, samples, and benchmarks
 ###############################################################################
 
-set(HSDF_SOURCES
-    ${CMAKE_SOURCE_DIR}/src/HashSDF.cu  
+set(PSDF_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/PermutoSDF.cu  
     ${CMAKE_SOURCE_DIR}/src/Sphere.cu  
     # ${CMAKE_SOURCE_DIR}/src/VoxelGrid.cu  
     ${CMAKE_SOURCE_DIR}/src/OccupancyGrid.cu  
@@ -258,9 +258,9 @@ set(HSDF_SOURCES
 # message("CUDA_NVCC_FLAGS--------------------------------------"${CUDA_NVCC_FLAGS})
 message(STATUS "Targeting GPU architectures CMAKE_CUDA_ARCHITECTURES: ${CMAKE_CUDA_ARCHITECTURES}")
 
-add_library(hash_sdf_cu SHARED ${HSDF_SOURCES})
-# target_compile_definitions(hash_sdf_cu PUBLIC ${HSDF_DEFINITIONS})
-target_compile_options(hash_sdf_cu PUBLIC $<$<COMPILE_LANGUAGE:CUDA>:${CUDA_NVCC_FLAGS}>)
+add_library(permuto_sdf_cu SHARED ${PSDF_SOURCES})
+# target_compile_definitions(permuto_sdf_cu PUBLIC ${PSDF_DEFINITIONS})
+target_compile_options(permuto_sdf_cu PUBLIC $<$<COMPILE_LANGUAGE:CUDA>:${CUDA_NVCC_FLAGS}>)
 
 
 
@@ -289,20 +289,20 @@ set(LIBS ${LIBS} ${catkin_LIBRARIES} ${EASYPBR_LIBRARY} ${CUDA_LIBRARIES} ${TORC
 
 
 #####SET all global options
-if(${HSDF_WITH_GL})
+if(${PSDF_WITH_GL})
     message("USING GL")
-    target_compile_definitions(hash_sdf_cu PUBLIC HSDF_WITH_GL)
+    target_compile_definitions(permuto_sdf_cu PUBLIC PSDF_WITH_GL)
 else()
     message("NOT USING GL")
 endif()
 
 
-target_link_libraries(hash_sdf_cu ${LIBS} )
-target_link_libraries(hash_sdf PRIVATE hash_sdf_cu )
+target_link_libraries(permuto_sdf_cu ${LIBS} )
+target_link_libraries(permuto_sdf PRIVATE permuto_sdf_cu )
 
 
 #definitions for cmake variables that are necesarry during runtime
-target_compile_definitions(hash_sdf_cu PRIVATE PROJECT_SOURCE_DIR="${PROJECT_SOURCE_DIR}") #point to the cmakelist folder of the easy_pbr
-target_compile_definitions(hash_sdf_cu PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}") # points to the CMakeList folder of whichever project included easy_pbr
+target_compile_definitions(permuto_sdf_cu PRIVATE PROJECT_SOURCE_DIR="${PROJECT_SOURCE_DIR}") #point to the cmakelist folder of the easy_pbr
+target_compile_definitions(permuto_sdf_cu PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}") # points to the CMakeList folder of whichever project included easy_pbr
 
 

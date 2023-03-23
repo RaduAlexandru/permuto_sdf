@@ -1,9 +1,9 @@
-#include "hash_sdf/RaySamplesPacked.cuh"
+#include "permuto_sdf/RaySamplesPacked.cuh"
 
 
 #include "UtilsPytorch.h" //contains torch so it has to be added BEFORE any other include because the other ones might include loguru which gets screwed up if torch was included before it
 
-#include "hash_sdf/RaySamplesPackedGPU.cuh"
+#include "permuto_sdf/RaySamplesPackedGPU.cuh"
 
 
 
