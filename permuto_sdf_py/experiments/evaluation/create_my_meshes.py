@@ -41,14 +41,14 @@ from permuto_sdf_py.utils.common_utils import create_bb_for_dataset
 from permuto_sdf_py.utils.common_utils import nchw2lin
 from permuto_sdf_py.utils.common_utils import lin2nchw
 from permuto_sdf_py.utils.permuto_sdf_utils import load_from_checkpoint
-from permuto_sdf_py.train_PermutoSDF import run_net_in_chunks
-from permuto_sdf_py.train_PermutoSDF import HyperParamsPermutoSDF
+from permuto_sdf_py.train_permuto_sdf import run_net_in_chunks
+from permuto_sdf_py.train_permuto_sdf import HyperParamsPermutoSDF
 import permuto_sdf_py.paths.list_of_checkpoints as list_chkpts
 import permuto_sdf_py.paths.list_of_training_scenes as list_scenes
 
 
 
-config_file="train_PermutoSDF.cfg"
+config_file="train_permuto_sdf.cfg"
 
 torch.manual_seed(0)
 torch.set_default_tensor_type(torch.cuda.FloatTensor)

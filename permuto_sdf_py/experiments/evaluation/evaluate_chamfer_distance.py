@@ -35,7 +35,7 @@ import subprocess
 
 
 
-config_file="train_PermutoSDF.cfg"
+config_file="train_permuto_sdf.cfg"
 
 torch.manual_seed(0)
 torch.set_default_tensor_type(torch.cuda.FloatTensor)

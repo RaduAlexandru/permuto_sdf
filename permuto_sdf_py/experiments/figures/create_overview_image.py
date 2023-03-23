@@ -41,8 +41,8 @@ from permuto_sdf_py.utils.common_utils import nchw2lin
 from permuto_sdf_py.utils.common_utils import lin2nchw
 from permuto_sdf_py.utils.sdf_utils import extract_mesh_from_sdf_model
 from permuto_sdf_py.utils.permuto_sdf_utils import load_from_checkpoint
-from permuto_sdf_py.train_PermutoSDF import run_net_in_chunks
-from permuto_sdf_py.train_PermutoSDF import HyperParamsPermutoSDF
+from permuto_sdf_py.train_permuto_sdf import run_net_in_chunks
+from permuto_sdf_py.train_permuto_sdf import HyperParamsPermutoSDF
 import permuto_sdf_py.paths.list_of_checkpoints as list_chkpts
 import permuto_sdf_py.paths.list_of_training_scenes as list_scenes
 

@@ -16,8 +16,8 @@ import permuto_sdf
 from permuto_sdf  import TrainParams
 from permuto_sdf_py.utils.common_utils import create_dataloader
 from permuto_sdf_py.utils.permuto_sdf_utils import get_frames_cropped
-from permuto_sdf_py.train_PermutoSDF import train
-from permuto_sdf_py.train_PermutoSDF import HyperParamsPermutoSDF
+from permuto_sdf_py.train_permuto_sdf import train
+from permuto_sdf_py.train_permuto_sdf import HyperParamsPermutoSDF
 import permuto_sdf_py.paths.list_of_training_scenes as list_scenes
 
 
@@ -39,7 +39,7 @@ args = parser.parse_args()
 
 def run():
 
-    config_file="train_PermutoSDF.cfg"
+    config_file="train_permuto_sdf.cfg"
     config_path=os.path.join( os.path.dirname( os.path.realpath(__file__) ) , '../../../config', config_file)
     train_params=TrainParams.create(config_path)
     hyperparams=HyperParamsPermutoSDF()

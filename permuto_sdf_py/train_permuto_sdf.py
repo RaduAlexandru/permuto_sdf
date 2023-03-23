@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 #trains PermutoSDF to recover geometry as sdf and color given only posed images
-# CALL with ./permuto_sdf_py/train_PermutoSDF.py --dataset dtu --scene dtu_scan24 --comp_name comp_1 --exp_info default
+# CALL with ./permuto_sdf_py/train_permuto_sdf.py --dataset dtu --scene dtu_scan24 --comp_name comp_1 --exp_info default
 
 import torch
 import torch.nn.functional as F
