@@ -5,7 +5,7 @@
 
 [PermutoSDF: Fast Multi-View Reconstruction with Implicit Surfaces using Permutohedral Lattices](https://radualexandru.github.io/permuto_sdf)
 <br>
- [Radu Alexandru Rosu](https://www.ais.uni-bonn.de/%7Erosu/),
+ [Radu Alexandru Rosu](https://radualexandru.github.io/),
  [Sven Behnke](https://www.ais.uni-bonn.de/behnke/)
  <br>
  University of Bonn, Autonomous Intelligent Systems
