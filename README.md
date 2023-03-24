@@ -28,7 +28,7 @@ $ cd permuto_sdf/docker
 $ ./build.sh
 $ ./run.sh
 ```
-This will build a docker container almost everything that is needed.
+This will build a docker image containing almost everything that is needed.
 
 
 PermutoSDF also depends on [EasyPBR], [DataLoaders] and [permutohedral_encoding] packages. Once you are inside the docker container (after running ./docker/run.sh) they can be easily installed with the following lines:
