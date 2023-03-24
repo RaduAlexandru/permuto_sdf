@@ -21,7 +21,17 @@ We model the scene as two neural networks that predict an SDF and a color field.
 
 # Install 
 
-PermutoSDF depends on [EasyPBR], [DataLoaders] and [permutohedral_encoding] packages. They can be easily installed with the following lines:
+Since PermutoSDF requires PyTorch to be installed with CXX_ABI=1, it's best to use the provided dockerfile:
+```sh
+$ git clone --recursive https://github.com/RaduAlexandru/permuto_sdf
+$ cd permuto_sdf/docker
+$ ./build.sh
+$ ./run.sh
+```
+This will build a docker container almost everything that is needed.
+
+
+PermutoSDF also depends on [EasyPBR], [DataLoaders] and [permutohedral_encoding] packages. Once you are inside the docker container (after running ./docker/run.sh) they can be easily installed with the following lines:
 ```sh
 $ git clone --recursive https://github.com/RaduAlexandru/easy_pbr
 $ cd easy_pbr && make && cd ..
@@ -153,7 +163,6 @@ PermutoSDF is provided under the terms of the MIT license (see LICENSE).
 
 
 # Citation
-
 ```
 @article{rosu2023permutosdf,
     title={PermutoSDF: Fast Multi-View Reconstruction with 
