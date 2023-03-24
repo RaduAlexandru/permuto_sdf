@@ -12,7 +12,7 @@
 
 
 <p align="middle">
-  <img src="imgs/teaser_big_white_s.png" width="650"/>
+  <img src="imgs/teaser_big_white_s2.png" width="650"/>
 </p>
 
 PermutoSDF is a system capable of recovering highly detailed 3D reconstructions given only 2D images with poses. We propose to use a hashed [permutohedral encoding] to ensure fast training and a novel RGB regularizer to encourage the network to predict high-frequency geometric detail. 
