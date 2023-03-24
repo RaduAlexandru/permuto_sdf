@@ -5,7 +5,7 @@ import math
 import numpy as np
 
 from permuto_sdf  import RaySampler
-# from instant_ngp_2_py.utils.utils import *
+# from permuto_sdf_py.utils.utils import *
 
 # from hair_recon_py.hair_recon.utils import *
 # import hair_recon_py.hair_recon.quaternion as quaternion

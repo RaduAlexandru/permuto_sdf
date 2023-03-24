@@ -1,4 +1,4 @@
-from instant_ngp_2_py.callbacks.callback import *
+from permuto_sdf_py.callbacks.callback import *
 from torch.utils.tensorboard import SummaryWriter
 
 class TensorboardCallback(Callback):

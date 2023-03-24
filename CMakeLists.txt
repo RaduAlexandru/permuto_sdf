@@ -30,6 +30,7 @@ option(PSDF_WITH_GL "Compile with GL" OFF) #sometimes when we run headless we wo
 
 ######   PACKAGES   ############################################################
 find_package(Eigen3 3.3 REQUIRED NO_MODULE)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui imgcodecs calib3d )
 find_package(EasyPBR REQUIRED)
 find_package(DataLoaders REQUIRED) #needed for the TensorReel
 find_package(CUDA REQUIRED)

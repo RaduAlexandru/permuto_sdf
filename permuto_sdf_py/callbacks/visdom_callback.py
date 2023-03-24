@@ -1,5 +1,5 @@
-from instant_ngp_2_py.callbacks.callback import *
-from instant_ngp_2_py.callbacks.vis import *
+from permuto_sdf_py.callbacks.callback import *
+from permuto_sdf_py.callbacks.vis import *
 
 class VisdomCallback(Callback):
 

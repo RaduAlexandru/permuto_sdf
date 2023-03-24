@@ -514,8 +514,8 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
                 pred_normals_img_vis=(pred_normals_img+1.0)*0.5
                 pred_normals_img_vis_alpha=torch.cat([pred_normals_img_vis,pred_weights_sum_img],1)
 
-                cb["tensorboard_callback"].tensorboard_writer.add_image('instant_ngp_2/' + phase.name + '/pred_rgb_img', pred_rgb_img.squeeze(), phase.iter_nr)
-                cb["tensorboard_callback"].tensorboard_writer.add_image('instant_ngp_2/' + phase.name + '/pred_normals', pred_normals_img_vis_alpha.squeeze(), phase.iter_nr)
+                cb["tensorboard_callback"].tensorboard_writer.add_image('permuto_sdf/' + phase.name + '/pred_rgb_img', pred_rgb_img.squeeze(), phase.iter_nr)
+                cb["tensorboard_callback"].tensorboard_writer.add_image('permuto_sdf/' + phase.name + '/pred_normals', pred_normals_img_vis_alpha.squeeze(), phase.iter_nr)
 
 
         if with_viewer:

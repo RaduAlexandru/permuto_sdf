@@ -1,6 +1,6 @@
 #https://github.com/devforfu/pytorch_playground/blob/master/loop.ipynbA
 
-from instant_ngp_2_py.callbacks.scores import *
+from permuto_sdf_py.callbacks.scores import *
 
 class Phase:
     """
