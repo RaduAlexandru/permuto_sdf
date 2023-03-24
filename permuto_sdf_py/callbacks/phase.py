@@ -1,6 +1,6 @@
 #https://github.com/devforfu/pytorch_playground/blob/master/loop.ipynbA
 
-from permuto_sdf_py.callbacks.scores import *
+# from permuto_sdf_py.callbacks.scores import *
 
 class Phase:
     """
@@ -19,6 +19,6 @@ class Phase:
         self.iter_nr = 0
         self.epoch_nr = 0
         self.samples_processed_this_epoch = 0
-        self.scores= Scores()
+        # self.scores= Scores()
         self.loss_acum_per_epoch=0.0
     
