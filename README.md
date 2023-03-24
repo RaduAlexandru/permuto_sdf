@@ -164,7 +164,7 @@ PermutoSDF is provided under the terms of the MIT license (see LICENSE).
 
 # Citation
 ```
-@article{rosu2023permutosdf,
+@inproceedings{rosu2023permutosdf,
     title={PermutoSDF: Fast Multi-View Reconstruction with 
             Implicit Surfaces using Permutohedral Lattices  },
     author={Radu Alexandru Rosu and Sven Behnke},
