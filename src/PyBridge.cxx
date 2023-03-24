@@ -1,8 +1,8 @@
 #include "permuto_sdf/PyBridge.h"
 
-#include <torch/extension.h>
 #include "torch/torch.h"
-#include "torch/csrc/utils/pybind.h"
+#include <torch/extension.h>
+
 
 //my stuff 
 #include "permuto_sdf/PermutoSDF.cuh"
