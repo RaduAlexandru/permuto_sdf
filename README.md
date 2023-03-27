@@ -168,7 +168,7 @@ PermutoSDF is provided under the terms of the MIT license (see LICENSE).
     title={PermutoSDF: Fast Multi-View Reconstruction with 
             Implicit Surfaces using Permutohedral Lattices  },
     author={Radu Alexandru Rosu and Sven Behnke},
-    booktitle={CVPR},
+    booktitle = {IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
     year={2023}
 }
 ```
