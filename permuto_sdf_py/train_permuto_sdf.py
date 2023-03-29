@@ -73,18 +73,19 @@ config_path=os.path.join( os.path.dirname( os.path.realpath(__file__) ) , '../co
 # #initialize the parameters used for training
 train_params=TrainParams.create(config_path)    
 class HyperParamsPermutoSDF:
+    s_mult=1.0 #multiplier for the scheduler. Lower values mean faster convergance at the cost of some accuracy
     lr= 1e-3
-    nr_iter_sphere_fit=4000
-    forced_variance_finish_iter=35000
+    nr_iter_sphere_fit=4000*s_mult
+    forced_variance_finish_iter=35000*s_mult
     eikonal_weight=0.04
     curvature_weight=1.3
     lipshitz_weight=3e-6
     mask_weight=0.1
     offsurface_weight=1e-4
-    iter_start_reduce_curv=50000
+    iter_start_reduce_curv=50000*s_mult
     iter_finish_reduce_curv=iter_start_reduce_curv+1001
-    lr_milestones=[100000,150000,180000,190000]
-    iter_finish_training=200000
+    lr_milestones=[100000*s_mult,150000*s_mult,180000*s_mult,190000*s_mult]
+    iter_finish_training=200000*s_mult
     forced_variance_finish=0.8
     use_occupancy_grid=True
     nr_samples_bg=32
@@ -95,7 +96,7 @@ class HyperParamsPermutoSDF:
     use_color_calibration=True
     nr_rays=512
     sdf_geom_feat_size=32
-    sdf_nr_iters_for_c2f=10000
+    sdf_nr_iters_for_c2f=10000*s_mult
     rgb_nr_iters_for_c2f=1
     background_nr_iters_for_c2f=1
     target_nr_of_samples=512*(64+16+16)
@@ -561,7 +562,7 @@ def run():
     print("has_apex", has_apex)
 
 
-    experiment_name="PermutoSDF_"+args.scene
+    experiment_name="permuto_sdf_"+args.scene
     if args.exp_info:
         experiment_name+="_"+args.exp_info
 
