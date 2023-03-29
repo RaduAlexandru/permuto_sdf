@@ -35,17 +35,9 @@ class AABB:
 
         is_valid_max=points<max_bounds
         is_valid_min=points>min_bounds
-        # print("points", points)
-        # print("is_valid_max", is_valid_max)
-        # print("is_valid_min", is_valid_min)
         is_valid_min_max=torch.logical_and(is_valid_max, is_valid_min) #nx3 true if each coordinate is within the bound
-        # print("is_valid_min_max", is_valid_min_max)
-        # is_valid_points=torch.logical_and( is_valid_min_max[:, 0:1], is_valid_min_max[:, 1:2], is_valid_min_max[:, 2:3]  )
         is_valid_points=  (is_valid_min_max*1.0).sum(dim=-1, keepdim=True) ==3 #set the points to true (valid) if all three coordinates are valid
-        # print("is_valid_points",is_valid_points)
-        # exit(1)
 
-        # is_valid_points=is_valid_points.view(-1,30,1)
 
         return is_valid_points
 
@@ -55,8 +47,6 @@ class AABB:
     def ray_intersection(self, ray_origins, ray_dirs):
         bb_min=   -torch.as_tensor(self.bounding_box_sizes_xyz)/2  +torch.as_tensor(self.bounding_box_translation)
         bb_max=  torch.as_tensor(self.bounding_box_sizes_xyz).cuda() -torch.as_tensor(self.bounding_box_sizes_xyz)/2  +torch.as_tensor(self.bounding_box_translation)
-        # print("bb_min", bb_min)
-        # print("bb_max", bb_max)
 
         dims=ray_dirs.shape[-1]
 
@@ -65,7 +55,6 @@ class AABB:
         invalid_hit_all_dimensions=torch.zeros_like( ray_origins[:,0:1]).bool() #all false
         value_invalid_depth=torch.tensor([[0.0]])
 
-        # print("nr rays is ", ray_dirs.shape[0])
 
 
         for i in range(dims):
@@ -88,10 +77,6 @@ class AABB:
             cond2=dimLo > hi
             invalid_hit_this_dimension=torch.logical_or(cond1, cond2)
             invalid_hit_all_dimensions=torch.logical_or(invalid_hit_all_dimensions, invalid_hit_this_dimension) #set all dimensions to invalid if this one is invalid
-            # print("invalid his _this dimensions ", (invalid_hit_this_dimension*1.0).sum() )
-            # print("invalid_hit_all_dimensions", (invalid_hit_all_dimensions*1.0).sum() )
-
-        
 
             lo=torch.where( dimLo>lo, dimLo, lo)
             hi=torch.where(dimHi < hi, dimHi, hi)

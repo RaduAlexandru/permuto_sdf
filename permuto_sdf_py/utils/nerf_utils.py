@@ -511,19 +511,7 @@ def create_samples(args, hyperparams, ray_origins, ray_dirs, jitter_samples, occ
 
 
 	else:
-		# print("todo")
-		# z_vals = model.ray_sampler.get_z_vals(ray_origins, ray_dirs, hyperparams.max_nr_samples_per_ray, jitter_samples)
-		# ray_samples = ray_origins.unsqueeze(1) + z_vals.unsqueeze(2) * ray_dirs.unsqueeze(1)
-		# fg_samples_pos=ray_samples.view(-1,3)
-		# fg_sample_dirs=ray_dirs.view(-1,1,3).repeat(1,  hyperparams.max_nr_samples_per_ray ,1).contiguous().view(-1,3)
-		# #make a dummy ray_start_end_idx says for each ray which is the sample at which they start and and the idx AFTER the sample at which it ends
-		# #so the tensor is nr_rays x 2 and each row says the idxs_start_sample and the idx_start+nr_samples_per_ray
-		# idx_start=torch.arange(hyperparams.max_nr_samples_per_ray) #0,1,2,3... nr_samples-1
-		# idx_start=idx_start*hyperparams.max_nr_samples_per_ray
-		# idx_end=idx_start+hyperparams.max_nr_samples_per_ray
-		# fg_ray_start_end_idx=torch.cat(idx_start.view(-1,1), idx_end.view(-1,1))
-
-
+	
 		fg_ray_samples_packed= RaySampler.compute_samples_fg(ray_origins, ray_dirs, ray_t_entry, ray_t_exit, hyperparams.min_dist_between_samples, hyperparams.max_nr_samples_per_ray, bounding_primitive.m_radius, bounding_primitive.m_center_tensor, jitter_samples)
 		fg_ray_samples_packed=fg_ray_samples_packed.compact_to_valid_samples()
 
@@ -531,13 +519,9 @@ def create_samples(args, hyperparams, ray_origins, ray_dirs, jitter_samples, occ
 	#create ray samples for bg
 	if not args.with_mask:
 		bg_ray_samples_packed= RaySampler.compute_samples_bg(ray_origins, ray_dirs, ray_t_exit, hyperparams.nr_samples_bg, bounding_primitive.m_radius, bounding_primitive.m_center_tensor, jitter_samples, False)
-		# bg_samples_pos=ray_samples_packed_bg.samples_pos_4d.view(-1,4)
-		# bg_samples_dirs=ray_samples_packed_bg.samples_dirs.view(-1,3)
-		# bg_ray_start_end_idx=ray_samples_packed_bg.ray_start_end_idx
 	else:
 		bg_ray_samples_packed=None
 
 
-	# return fg_samples_pos, fg_samples_dirs, fg_ray_start_end_idx, bg_samples_pos, bg_samples_dirs, bg_ray_start_end_idx
 	return fg_ray_samples_packed, bg_ray_samples_packed
 

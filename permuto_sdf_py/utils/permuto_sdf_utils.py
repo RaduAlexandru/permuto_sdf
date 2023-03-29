@@ -8,11 +8,9 @@ import torch.nn.functional as F
 
 
 
-# from instant_ngp_2_py.utils.utils import *
 from permuto_sdf_py.utils.nerf_utils import get_midpoint_of_sections
 from permuto_sdf_py.utils.sdf_utils import sdf_loss_spheres
 from permuto_sdf_py.utils.sdf_utils import sdf_loss_sphere
-# from instant_ngp_2_py.utils.sphere import SpherePy
 from permuto_sdf  import OccupancyGrid
 from permuto_sdf  import VolumeRendering
 from permuto_sdf  import RaySamplesPacked

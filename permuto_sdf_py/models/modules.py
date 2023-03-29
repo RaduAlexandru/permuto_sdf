@@ -33,8 +33,6 @@ class PatchPixelPicker(torch.nn.Module):
 
             #we pick a center pixel such that it has enough pixels up and down 
             half_patch=int(patch_size/2)
-            # x_idx=torch.randint(half_patch,frame.width-half_patch, (1,))
-            # y_idx=torch.randint(half_patch,frame.height-half_patch, (1,))
             x_idx=random.randint(0,frame.width-patch_size)
             y_idx=random.randint(0,frame.height-patch_size)
 
@@ -70,8 +68,6 @@ class PatchesPixelPicker(torch.nn.Module):
 
             #we pick a center pixel such that it has enough pixels up and down 
             half_patch=int(patch_size/2)
-            # x_idx=torch.randint(half_patch,frame.width-half_patch, (1,))
-            # y_idx=torch.randint(half_patch,frame.height-half_patch, (1,))
             all_indices_list=[]
             for i in range(nr_patches):
 

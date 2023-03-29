@@ -239,45 +239,10 @@ def run():
     if with_viewer:
         view=Viewer.create(config_path)
         ngp_gui=NGPGui.create(view)
-        # view.m_camera.from_string("-0.585619  0.146561  0.708744 -0.0464464  -0.360972 -0.0180037 0.931245 0.0388294 0.0539103 0.0242866 60 0.0502494 5024.94")
-        # view.m_camera.from_string(" -1.5907  1.49436 0.439306 -0.283419 -0.558506 -0.210916 0.750498   0.0436016 -0.00862195  -0.0506149 60 0.0502494 5024.94")
-
-        # -0.051 z
-        # view.m_camera.from_string("-0.652413   1.25446  -1.29682 0.0922235  0.903983  0.335384 -0.248578    0.06486  0.0473774 -0.0912327 60 0.0502494 5024.94")
-        # -0.035
-        # view.m_camera.from_string("-0.0282712    1.22979   -1.51187 0.0111133  0.940034  0.339456 -0.0307861    0.06486  0.0473774 -0.0912327 60 0.0502494 5024.94")
-        #-0.111
-        # view.m_camera.from_string("-1.24147  1.10699 0.661123 -0.279303 -0.464168 -0.157016 0.82573  0.00242712 -0.00523562   -0.095575 52.5 0.0502494 5024.94")
-        # view.spotlight_with_idx(0).from_string("-1.14154  1.27535 0.610146 -0.325809 -0.475568 -0.195282 0.79344 -3.01493e-05  -0.00322646            0 40 0.181936 181.936")
-
-        #with the rotated rochid at -32 degrees
-        # -0.057 Z layer 
-        #0.021 distance between layers
-        # view.m_camera.from_string("   -1.41268    1.24092 0.00524646 -0.252794 -0.662109 -0.254448 0.657958 -0.0108633 -0.0232055  0.0144082 52.5 0.0502494 5024.94 ")
-        # view.spotlight_with_idx(0).from_string("-1.16891  1.31974 0.439933 -0.325566 -0.522588 -0.225326 0.755071 -3.01493e-05  -0.00322646            0 40 0.181945 181.945")
-        # ngp_gui.m_isolines_layer_z_coord=-0.057
-        # ngp_gui.m_distance_between_isolines=0.021
-
-        #   -1.41233    1.24092 -0.0176877 -0.250688 -0.667426  -0.25649 0.65256 -0.0108633 -0.0232055  0.0144082 52.5 0.0502494 5024.94
-        # ngp_gui.m_isolines_layer_z_coord=-0.035
-
-        #  -1.5046  1.12268 0.151704 -0.236638 -0.638243 -0.215893 0.699962 -0.0108633 -0.0232055  0.0144082 52.5 0.0502494 5024.94
-        # ngp_gui.m_isolines_layer_z_coord=-0.035
-
-        #  -1.31317   1.34323 0.0143715 -0.278346 -0.649732 -0.278321 0.650228 -0.0108633 -0.0232055  0.0144082 52.5 0.0502494 5024.94
-        #  ngp_gui.m_isolines_layer_z_coord=-0.035
-
-        #   -1.26452   1.38785 0.0348595 -0.291973 -0.639387 -0.287201 0.650611 -0.0108633 -0.0232055  0.0144082 52.5 0.0502494 5024.94
-        #   ngp_gui.m_isolines_layer_z_coord=-0.035
-        #   ngp_gui.m_distance_between_isolines=0.023
-
-
         #with the rotated rochid at -47 degrees
         view.m_camera.from_string("  -1.39789   1.25715 0.0144385 -0.257307 -0.658095 -0.257305 0.659006 -0.0108633 -0.0232055  0.0144082 52.5 0.0502494 5024.94")
-        # view.spotlight_with_idx(0).from_string("-1.19122  1.34844 0.253193 -0.315982 -0.574946 -0.255875 0.710011 -3.01493e-05  -0.00322646            0 40 0.182038 182.038")
         view.spotlight_with_idx(0).from_string("-1.19069  1.36252 0.164685 -0.310569 -0.598559 -0.270566 0.687067 -3.01493e-05  -0.00322646            0 40 0.181798 181.798")
         ngp_gui.m_isolines_layer_z_coord=-0.057
-        # ngp_gui.m_distance_between_isolines=0.021
         ngp_gui.m_distance_between_isolines=0.017
 
 
@@ -285,8 +250,6 @@ def run():
         
 
 
-        #light is at 
-        # -1.14154  1.27535 0.610146 -0.325809 -0.475568 -0.195282 0.79344 -3.01493e-05  -0.00322646            0 40 0.181936 181.936
 
     #extract a mesh just to show it
     extracted_mesh=extract_mesh_from_sdf_model(model_sdf, nr_points_per_dim=200, min_val=-0.5, max_val=0.5)
@@ -294,17 +257,16 @@ def run():
 
 
     #show another mesh if necessary
-    mesh=Mesh("/media/rosu/Data/data/3d_objs/sketchfab/orchid2/source/model/model_clean.obj")
-    # mesh.model_matrix.rotate_axis_angle([0,1,0],-32) #for the orchid2
-    mesh.model_matrix.rotate_axis_angle([0,1,0],-47) #for the orchid2
-    mesh.apply_model_matrix_to_cpu(True)
-    mesh.normalize_size()
-    mesh.normalize_position()
-    mesh.scale_mesh(0.6) #a bit smaller than the bounding box
-    mesh.set_diffuse_tex("/media/rosu/Data/data/3d_objs/sketchfab/orchid2/source/model/tex_u1_v1.jpg")
-    Scene.show(mesh, "mesh")
+    # mesh=Mesh("/media/rosu/Data/data/3d_objs/sketchfab/orchid2/source/model/model_clean.obj")
+    # # mesh.model_matrix.rotate_axis_angle([0,1,0],-32) #for the orchid2
+    # mesh.model_matrix.rotate_axis_angle([0,1,0],-47) #for the orchid2
+    # mesh.apply_model_matrix_to_cpu(True)
+    # mesh.normalize_size()
+    # mesh.normalize_position()
+    # mesh.scale_mesh(0.6) #a bit smaller than the bounding box
+    # mesh.set_diffuse_tex("/media/rosu/Data/data/3d_objs/sketchfab/orchid2/source/model/tex_u1_v1.jpg")
+    # Scene.show(mesh, "mesh")
 
-    # -1.00647 0.784119 0.390372 -0.268382 -0.507276 -0.169949 0.801088  0.107146 -0.145667 -0.136326 60 0.0502494 5024.94
 
 
 

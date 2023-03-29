@@ -215,27 +215,7 @@ class SumOverRayFunc(Function):
         ray_samples_packed=ctx.ray_samples_packed
         
 
-
-        #TODO the grad_values_sum_per_sample is not yet used in this backward pass, so please don't use it in the forward pass for anything grad related
-
         grad_sample_values =VolumeRendering.sum_over_each_ray_backward(grad_values_sum_per_ray, grad_values_sum_per_sample, ray_samples_packed, sample_values) 
-
-
-        
-        # print("grad_values_sum_per_ray", grad_values_sum_per_ray.min(), grad_values_sum_per_ray.max()) 
-        # print("grad_values_sum_per_sample", grad_values_sum_per_sample.min(), grad_values_sum_per_sample.max()) 
-        # print("grad_sample_values", grad_sample_values.min(), grad_sample_values.max()) 
-
-      
-        # if torch.isnan(grad_values_sum_per_ray).any():
-        #     print("wtf ")
-        #     exit()
-        # if torch.isnan(grad_values_sum_per_sample).any():
-        #     print("wtf ")
-        #     exit()
-        # if torch.isnan(grad_sample_values).any():
-        #     print("wtf ")
-        #     exit()
 
 
         ctx.ray_samples_packed=None #Release memory in case it's not automatically released
