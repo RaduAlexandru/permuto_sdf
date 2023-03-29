@@ -4,8 +4,6 @@
 // #include <string>
 
 #include "UtilsPytorch.h" //contains torch so it has to be added BEFORE any other include because the other ones might include loguru which gets screwed up if torch was included before it
-// #include "EasyCuda/UtilsCuda.h"
-// #include "string_utils.h"
 
 //my stuff
 #include "permuto_sdf/RaySamplerGPU.cuh"
@@ -114,8 +112,6 @@ RaySamplesPacked RaySampler::compute_samples_fg(const torch::Tensor& ray_origins
 
     int nr_samples_maximum=nr_rays*max_nr_samples_per_ray;
     RaySamplesPacked ray_samples_packed(nr_rays, nr_samples_maximum);
-    // ray_samples_packed.rays_have_equal_nr_of_samples=true;
-    // ray_samples_packed.fixed_nr_of_samples_per_ray=nr_samples_per_ray;
 
 
     const dim3 blocks = { (unsigned int)div_round_up(nr_rays, BLOCK_SIZE), 1, 1 }; 

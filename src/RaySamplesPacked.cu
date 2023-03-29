@@ -53,31 +53,6 @@ int RaySamplesPacked::compute_exact_nr_samples(){
     return nr_samples_total;
 }
 
-//since we preallocate more samples than necessary, some of them might be empty. so we just get the valid ones here
-//cannot do it this way because some rays may have allocated more samples that what they actually created so the cur_nr_samples may be higher than the actual nr of samples which would calculated from ray_start_end_idx[:,1]-ray_start_end_idx[:,0]. This causes further problems when doing the colorcal because we don't know how many weights and biases we should repeat for each pixel 
-// RaySamplesPacked RaySamplesPacked::compact_to_valid_samples(){
-//     torch::cuda::synchronize();
-//     int cur_nr_samples_cpu=cur_nr_samples.cpu().item<int>(); 
-//     if(cur_nr_samples_cpu>max_nr_samples){
-//         std::cout <<"We created more samples than the maximum nr of samples that we can store in RaySamplesPacked. Please increse the maximum nr of samples in the OccupancyGrid class. Cur nr samples is  " << cur_nr_samples_cpu << "while max nr samples is " << max_nr_samples << std::endl;
-//     }
-//     cur_nr_samples_cpu=std::min(cur_nr_samples_cpu,max_nr_samples);
-//     int nr_rays=ray_start_end_idx.size(0);
-
-//     //make a struct with only the valid samples
-//     RaySamplesPacked ray_samples_packed_valid(nr_rays, cur_nr_samples_cpu);
-    
-//     ray_samples_packed_valid.samples_pos=samples_pos.slice(0, 0, cur_nr_samples_cpu);
-//     ray_samples_packed_valid.samples_pos_4d=samples_pos_4d.slice(0, 0, cur_nr_samples_cpu);
-//     ray_samples_packed_valid.samples_dirs=samples_dirs.slice(0, 0, cur_nr_samples_cpu);
-//     ray_samples_packed_valid.samples_z=samples_z.slice(0, 0, cur_nr_samples_cpu);
-//     ray_samples_packed_valid.samples_dt=samples_dt.slice(0, 0, cur_nr_samples_cpu);
-//     ray_samples_packed_valid.samples_sdf=samples_sdf.slice(0, 0, cur_nr_samples_cpu);
-//     ray_samples_packed_valid.ray_fixed_dt=ray_fixed_dt;
-//     ray_samples_packed_valid.ray_start_end_idx=ray_start_end_idx;
-
-//     return ray_samples_packed_valid;
-// }
 
 RaySamplesPacked RaySamplesPacked::compact_to_valid_samples(){
 

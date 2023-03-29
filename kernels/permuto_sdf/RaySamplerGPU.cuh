@@ -1,22 +1,13 @@
 #pragma once
 
 
-// #include "permuto_sdf/jitify_helper/jitify_helper.cuh"
 #include <torch/torch.h>
-// #include <cuda.h>
-// #include <cuda_runtime.h>
-// #include <cuda_runtime_api.h>
-// #include "device_launch_parameters.h" //needed for threadIdx and blockDim 
-// #include <torch/torch.h>
 #include "permuto_sdf/helper_math.h"
 
 // //Add this header after we add all cuda stuff because we need the profiler to have cudaDeviceSyncronize defined
 // #define ENABLE_CUDA_PROFILING 1
 // #include "Profiler.h" 
 
-//matrices
-// #include "permuto_sdf/kernels/mat3.h"
-// #include "permuto_sdf/kernels/mat4.h"
 
 #include "permuto_sdf/pcg32.h"
 

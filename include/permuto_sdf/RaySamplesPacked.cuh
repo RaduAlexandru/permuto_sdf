@@ -26,7 +26,6 @@ public:
     torch::Tensor samples_sdf; //nr_samples x 1 //DO NOT write directly to this vector, rather use the set_sdf function
     torch::Tensor ray_fixed_dt; //since all the samples on the ray have the same dt when we create it with the occupancy grid, we can also store here the dt for that ray
     torch::Tensor ray_start_end_idx; // nr_rays x 2 for each ray, we store the idx of the first sample and the end sample that indexes into the sample_ tensors
-    // torch::Tensor ray_minimum_possible_sdf; //stores the minimum possible sdf that can be reached for this ray given the sdf that we sample at each point and the distance between 
 
     //we need a very large pool of samples because we are not quite sure how many we will create on every iteration
     // torch::Tensor max_nr_samples;

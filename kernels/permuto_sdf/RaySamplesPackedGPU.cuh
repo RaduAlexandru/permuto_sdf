@@ -1,7 +1,6 @@
 #pragma once
 
 
-// #include "permuto_sdf/jitify_helper/jitify_helper.cuh"
 #include <torch/torch.h>
 #include "permuto_sdf/helper_math.h"
 
