@@ -4,11 +4,8 @@
 // #include <string>
 
 #include "UtilsPytorch.h" //contains torch so it has to be added BEFORE any other include because the other ones might include loguru which gets screwed up if torch was included before it
-// #include "EasyCuda/UtilsCuda.h"
-// #include "string_utils.h"
 
 //my stuff
-// #include "permuto_sdf/HashTable.cuh"
 #include "permuto_sdf/OccupancyGridGPU.cuh"
 
 
@@ -27,8 +24,6 @@ pcg32 OccupancyGrid::m_rng;
 
 //CPU code that calls the kernels
 OccupancyGrid::OccupancyGrid(const int nr_voxels_per_dim, const float grid_extent, const Eigen::Vector3f grid_translation):
-// OccupancyGrid::OccupancyGrid()
-    // m_val_dim(val_dim),
     m_nr_voxels_per_dim(nr_voxels_per_dim),
     m_grid_extent(grid_extent),
     m_grid_translation(grid_translation)
@@ -39,8 +34,6 @@ OccupancyGrid::OccupancyGrid(const int nr_voxels_per_dim, const float grid_exten
 
         //make a grid which stores the floating point value occupancy
         //is starts at 1 showing that it is all occupied at the beggining
-        // m_grid=torch::ones({ m_nr_voxels_per_dim, m_nr_voxels_per_dim, m_nr_voxels_per_dim },  torch::dtype(torch::kFloat32).device(torch::kCUDA, 0)  );
-        // m_grid=torch::ones({m_nr_voxels_per_dim, m_nr_voxels_per_dim, m_nr_voxels_per_dim },  torch::dtype(torch::kFloat32).device(torch::kCUDA, 0)  );
         m_grid_values=make_grid_values(nr_voxels_per_dim);
         m_grid_occupancy=make_grid_occupancy(nr_voxels_per_dim);
 
@@ -94,11 +87,6 @@ torch::Tensor OccupancyGrid::make_grid_occupancy(const int nr_voxels_per_dim){
 torch::Tensor OccupancyGrid::compute_grid_points(const bool randomize_position){
 
     //make some positions in the range [-1,1], as many as new_nr_voxels_per_dim
-    // torch::Tensor lin = torch::linspace(-1,1,m_nr_voxels_per_dim, torch::dtype(torch::kFloat32).device(torch::kCUDA, 0));
-
-    // torch::Tensor grid_points=torch::cartesian_prod({lin, lin, lin});
-
-
 
     int nr_voxels=get_nr_voxels();
 
@@ -125,9 +113,6 @@ torch::Tensor OccupancyGrid::compute_grid_points(const bool randomize_position){
     }
 
     return grid_points;
-
-    // return grid_points;
-
 }
 
 std::tuple<torch::Tensor,torch::Tensor> OccupancyGrid::compute_random_sample_of_grid_points(const int nr_voxels_to_select, const bool randomize_position){
@@ -161,56 +146,7 @@ std::tuple<torch::Tensor,torch::Tensor> OccupancyGrid::compute_random_sample_of_
 
 }
 
-// std::shared_ptr<easy_pbr::Mesh> OccupancyGrid::create_cubes_for_occupied_voxels(){
 
-//     //get the positions of the centers of the voxels
-//     torch::Tensor grid_centers=compute_grid_points(false);
-//     Eigen::MatrixXf grid_center_eigen=tensor2eigen(grid_centers);
-
-//     //get the occupancy for each voxels
-//     torch::Tensor grid_occupancy=get_grid_occupancy();
-//     grid_occupancy=grid_occupancy.view({-1,1});
-//     Eigen::MatrixXf grid_occupancy_eigen=tensor2eigen(grid_occupancy.to(torch::kFloat32));
-
-//     //make a cube of the size of a voxel
-//     std::shared_ptr<easy_pbr::Mesh> cube=easy_pbr::Mesh::create();
-//     float voxel_size=m_grid_extent/m_nr_voxels_per_dim;
-//     cube->create_box(voxel_size, voxel_size, voxel_size);
-
-//     VLOG(1) << "starting loop";
-
-//     //for every occupied voxel, we put a cube there
-//     std::vector<std::shared_ptr<easy_pbr::Mesh>> cubes_list;
-//     for(int i=0; i<get_nr_voxels(); i++){
-//         float occupancy=grid_occupancy_eigen(i,0);
-//         Eigen::Vector3f pos=grid_center_eigen.row(i);
-
-//         //if it's occupied, create a cube at this position
-//         if(occupancy>0.5){
-//             // std::shared_ptr<easy_pbr::Mesh> cube_at_pos=std::make_shared<easy_pbr::Mesh>(cube->clone());
-//             std::shared_ptr<easy_pbr::Mesh> cube_at_pos=easy_pbr::Mesh::create();
-//             cube->create_box(voxel_size, voxel_size, voxel_size);
-//             //move at position
-//             cube_at_pos->translate_model_matrix(pos.cast<double>());
-//             cube_at_pos->apply_model_matrix_to_cpu(true);
-            
-//             cubes_list.push_back(cube_at_pos); 
-//         }
-//     }
-
-
-
-
-//     std::shared_ptr<easy_pbr::Mesh> mesh_cubes=easy_pbr::Mesh::create();
-//     mesh_cubes->add(cubes_list);
-
-//     mesh_cubes->m_vis.m_show_mesh=false;
-//     mesh_cubes->m_vis.m_show_wireframe=true;
-
-//     VLOG(1) << "return";
-
-//     return mesh_cubes;
-// }
 
 RaySamplesPacked OccupancyGrid::compute_samples_in_occupied_regions(const torch::Tensor ray_origins, const torch::Tensor ray_dirs, const torch::Tensor ray_t_entry, const torch::Tensor ray_t_exit, const float min_dist_between_samples, const int max_nr_samples_per_ray, const bool jitter_samples){
     int nr_rays=ray_origins.size(0);
@@ -441,15 +377,12 @@ void OccupancyGrid::update_with_sdf(const torch::Tensor sdf, const float inv_s, 
                 inv_s,
                 max_eikonal_abs,
                 occupancy_thresh,
-                // check_neighbours_density,
-                // m_grid_full_values.packed_accessor32<float,3,torch::RestrictPtrTraits>()
                 m_grid_values.packed_accessor32<float,1,torch::RestrictPtrTraits>(),
                 m_grid_occupancy.packed_accessor32<bool,1,torch::RestrictPtrTraits>()
             );
 
 }
 
-// void OccupancyGrid::update_with_sdf_random_sample(const torch::Tensor point_indices, const torch::Tensor sdf, const float inv_s, const float max_eikonal_abs, const float occupancy_thresh){
 void OccupancyGrid::update_with_sdf_random_sample(const torch::Tensor point_indices, const torch::Tensor sdf, const float inv_s, const float occupancy_thresh){
 
     CHECK(sdf.dim()==2) << "density should have dim 2 correspondin to nr_pointsx1. However it has sizes" << sdf.sizes();
@@ -470,10 +403,7 @@ void OccupancyGrid::update_with_sdf_random_sample(const torch::Tensor point_indi
                 m_nr_voxels_per_dim,
                 point_indices.packed_accessor32<int,1,torch::RestrictPtrTraits>(),
                 inv_s,
-                // max_eikonal_abs,
                 occupancy_thresh,
-                // check_neighbours_density,
-                // m_grid_full_values.packed_accessor32<float,3,torch::RestrictPtrTraits>()
                 m_grid_values.packed_accessor32<float,1,torch::RestrictPtrTraits>(),
                 m_grid_occupancy.packed_accessor32<bool,1,torch::RestrictPtrTraits>()
             );
