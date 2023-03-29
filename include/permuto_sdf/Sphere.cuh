@@ -1,9 +1,5 @@
 #pragma once
 
-// #include <stdarg.h>
-
-// #include <cuda.h>
-
 
 #include "torch/torch.h"
 

@@ -1,13 +1,7 @@
 #pragma once
 
 
-// #include "permuto_sdf/jitify_helper/jitify_helper.cuh"
 #include <torch/torch.h>
-// #include <cuda.h>
-// #include <cuda_runtime.h>
-// #include <cuda_runtime_api.h>
-// #include "device_launch_parameters.h" //needed for threadIdx and blockDim 
-// #include <torch/torch.h>
 #include "permuto_sdf/helper_math.h"
 
 //Add this header after we add all cuda stuff because we need the profiler to have cudaDeviceSyncronize defined
@@ -118,38 +112,6 @@ volume_render_nerf(
         float T = 1.f;
         float EPSILON = 1e-4f;
         float3 rgb_ray = make_float3(0,0,0);
-        // float3 hitpoint = make_float3(0,0,0);
-
-        // uint32_t compacted_numsteps = 0;
-        // Eigen::Vector3f ray_o = rays_in_unnormalized[i].o;
-        // for (; compacted_numsteps < numsteps; ++compacted_numsteps) {
-        //     if (T < EPSILON) {
-        //         break;
-        //     }
-
-        //     const tcnn::vector_t<tcnn::network_precision_t, 4> local_network_output = *(tcnn::vector_t<tcnn::network_precision_t, 4>*)network_output;
-        //     const Array3f rgb = network_to_rgb(local_network_output, rgb_activation);
-        //     const Vector3f pos = unwarp_position(coords_in.ptr->pos.p, aabb);
-        //     const float dt = unwarp_dt(coords_in.ptr->dt);
-        //     float cur_depth = (pos - ray_o).norm();
-        //     float density = network_to_density(float(local_network_output[3]), density_activation);
-
-
-        //     const float alpha = 1.f - __expf(-density * dt);
-        //     const float weight = alpha * T;
-        //     rgb_ray += weight * rgb;
-        //     hitpoint += weight * pos;
-        //     depth_ray += weight * cur_depth;
-        //     T *= (1.f - alpha);
-
-        //     network_output += padded_output_width;
-        //     coords_in += 1;
-        // }
-        // hitpoint /= (1.0f - T);
-
-
-
-
 
         // int nr_samples=idx_end-idx_start+1; //we add a +1 because we store indices towards first and start samples. So when we have 2 samples the indices would be 0 and 1;
         float depth_ray = 0.f;
@@ -158,31 +120,11 @@ volume_render_nerf(
                 break;
             }
 
-
-            //if for some reason we are accesing out of bound
-            // if((idx_start+i)>=max_nr_samples){
-            //     printf("why\n");
-            //     break;
-            // }
-
-            // const tcnn::vector_t<tcnn::network_precision_t, 4> local_network_output = *(tcnn::vector_t<tcnn::network_precision_t, 4>*)network_output;
             float3 rgb;
             rgb.x=rgb_samples[idx_start+i][0];
             rgb.y=rgb_samples[idx_start+i][1];
             rgb.z=rgb_samples[idx_start+i][2];
             float cur_depth = samples_z[idx_start+i][0];
-            // float next_depth;
-            // if (i<nr_samples-1){ //everything except the last sample
-            //     next_depth=samples_z[idx_start+i+1][0];
-            // }else{ //the last sample doesnt have a next one to grab the depth so we get the depth from the intersection with the aabb
-            //     if (use_ray_t_exit){
-            //         next_depth=ray_t_exit[idx][0];
-            //     }else{
-            //         next_depth=1e10; //use a gigantic distance indicating that this sample almost models infinity
-            //     }
-            // }
-            // float dt=next_depth-cur_depth;
-
             float dt=samples_dt[idx_start+i][0];
 
             float density = radiance_samples[idx_start+i][0];
@@ -191,14 +133,12 @@ volume_render_nerf(
             const float alpha = 1.f - __expf(-density * dt);
             const float weight = alpha * T;
             rgb_ray += weight * rgb;
-            // hitpoint += weight * pos;
             depth_ray += weight * cur_depth;
             T *= (1.f - alpha);
 
             weight_per_sample[idx_start+i][0]=weight;
 
         }
-        // hitpoint /= (1.0f - T);
 
         //finish
         pred_rgb[idx][0]=rgb_ray.x;
@@ -266,13 +206,6 @@ volume_render_nerf_backward(
     int idx_start=0;
     int idx_end=0;
     int nr_samples=0;
-    // if (rays_have_equal_nr_of_samples){
-    //     idx_start=idx*fixed_nr_of_samples_per_ray;
-    //     idx_end=idx*fixed_nr_of_samples_per_ray+fixed_nr_of_samples_per_ray-1; //we do a -1 because idx_end has to point towards the last sample that we integrate. So when fixed_nr_of_samples is 2, then idx_end points at 1
-    // }else{
-    //     idx_start=ray_start_end_idx[idx][0];
-    //     idx_end=ray_start_end_idx[idx][1];
-    // }
     get_start_end_ray_indices(nr_samples, idx_start, idx_end, idx, rays_have_equal_nr_of_samples, fixed_nr_of_samples_per_ray, ray_start_end_idx  );
 
     // if (idx_end>max_nr_samples){ //this batch of samples would have ended up outside of the maximum allocation of samples but we didn't actually write any samples
@@ -286,7 +219,6 @@ volume_render_nerf_backward(
         //we actually integrate here similar to https://github.com/NVlabs/instant-ngp/blob/e1d33a42a4de0b24237685f2ebdc07bcef1ecae9/src/testbed_nerf.cu#L1314
         float T = 1.f;
         float EPSILON = 1e-4f;
-        // float3 rgb_ray = make_float3(0,0,0);
         
         float3 grad_pred_rgb_ray;
         grad_pred_rgb_ray.x=grad_pred_rgb[idx][0];
@@ -319,18 +251,6 @@ volume_render_nerf_backward(
             rgb.x=rgb_samples[idx_start+i][0];
             rgb.y=rgb_samples[idx_start+i][1];
             rgb.z=rgb_samples[idx_start+i][2]; 
-            // float cur_depth = samples_z[idx_start+i][0];
-            // float next_depth;
-            // if (i<nr_samples-1){ //everything except the last sample
-            //     next_depth=samples_z[idx_start+i+1][0];
-            // }else{ //the last sample doesnt have a next one to grab the depth so we get the depth from the intersection with the aabb
-            //     if (use_ray_t_exit){
-            //         next_depth=ray_t_exit[idx][0];
-            //     }else{
-            //         next_depth=1e10; //use a gigantic distance indicating that this sample almost models infinity
-            //     }
-            // }
-            // float dt=next_depth-cur_depth;
             float dt=samples_dt[idx_start+i][0];
             float density = radiance_samples[idx_start+i][0];
 
@@ -359,17 +279,12 @@ volume_render_nerf_backward(
             //which cna be reordered in what we have here
             float3 suffix = rgb_ray_fully_integrated - rgb_ray_up_until_now;
             float grad=0;
-            // grad+=dt * (lg.gradient.matrix().dot((T * rgb - suffix).matrix()) )
             grad+=grad_pred_rgb_ray.x *dt *  (T * rgb.x - suffix.x);
             grad+=grad_pred_rgb_ray.y *dt *  (T * rgb.y - suffix.y);
             grad+=grad_pred_rgb_ray.z *dt *  (T * rgb.z - suffix.z);
             //when we also combine with backgroud, we also get a gradient WRT to the last T
             grad+=grad_bg_transmittance_ray*(-dt*last_T);
             grad_radiance_samples[idx_start+i][0]=grad;
-
-
-
-
 
 
             nr_samples_processed+=1;
@@ -417,13 +332,6 @@ compute_dt_gpu(
     int nr_samples=0;
     get_start_end_ray_indices(nr_samples, idx_start, idx_end, idx, rays_have_equal_nr_of_samples, fixed_nr_of_samples_per_ray, ray_start_end_idx  );
 
-    // bool debug=false;
-    // if (idx==511){
-    //     // debug=true;
-    // }
-    // if(debug){
-    //     printf("idx is %d, idxstart idx end is %d,%d max_nr_samples %d \n", idx, idx_start, idx_end, max_nr_samples);
-    // }
 
     // if (idx_end>max_nr_samples){ //this batch of samples would have ended up outside of the maximum allocation of samples but we didn't actually write any samples
     if (idx_end>max_nr_samples || nr_samples==0){ //this batch of samples would have ended up outside of the maximum allocation of samples but we didn't actually write any samples
@@ -431,40 +339,18 @@ compute_dt_gpu(
         // dt_samples[idx][0]=0;
     }else{
        
-
-
-        // if(debug){
-        //     printf("idx is %d, nr_samples is %d \n", idx, nr_samples);
-        // }
         for (int i=0; i<nr_samples; i++) {
-
-        //   if(debug){
-        //         printf("idx is %d, i is  %d \n", idx, i);
-        //     } 
-          
             float cur_depth = samples_z[idx_start+i][0];
-            // if(debug){
-            //     printf("idx is %d, cur_depth %f \n", idx, cur_depth);
-            // }
             float next_depth;
             if (i<nr_samples-1){ //everything except the last sample
                 next_depth=samples_z[idx_start+i+1][0];
-                // if(debug){
-                //     printf("idx is %d, next_depth from samples_z %f \n", idx, next_depth);
-                // }
             }else{ //the last sample doesnt have a next one to grab the depth so we get the depth from the intersection with the aabb
                 if (use_ray_t_exit){
                     next_depth=ray_t_exit[idx][0];
-                    // if(debug){
-                    //     printf("idx is %d, next_depth from ray_y_exit %f \n", idx, next_depth);
-                    // }
                 }else{
                     next_depth=1e10; //use a gigantic distance indicating that this sample almost models infinity
                 }
             }
-            // if(debug){
-            //     printf("idx is %d, next_depth FINAL %f \n", idx, next_depth);
-            // }
             float dt=next_depth-cur_depth;
 
             dt_samples[idx_start+i][0]=dt;
@@ -516,9 +402,6 @@ cumprod_alpha2transmittance_gpu(
        
         for (int i=0; i<nr_samples; i++) {
            
-            
-
-
 
             //cumprod
             transmittance_samples[idx_start+i][0]=T;
@@ -641,10 +524,6 @@ sdf2alpha_gpu(
         inv_s=map_range_val(dt_uniform_samples, 0.0001, 0.01, inv_s_max, inv_s_min  );
     }
     inv_s=inv_s*inv_s_multiplier;
-    // printf("inv_s is %f, dt is %f \n",inv_s, dt_uniform_samples);
-    // printf("dt is %f \n",dt);
-    // printf("inv_max_exp is %f \n",inv_max_exp);
-    // printf("inv_min_exp is %f \n",inv_min_exp);
 
     //get the indexes of the start and end sample
     int idx_start=0;
@@ -652,7 +531,6 @@ sdf2alpha_gpu(
     int nr_samples=0;
     get_start_end_ray_indices(nr_samples, idx_start, idx_end, idx, rays_have_equal_nr_of_samples, fixed_nr_of_samples_per_ray, ray_start_end_idx  );
 
-    // if (idx_end>max_nr_samples){ //this batch of samples would have ended up outside of the maximum allocation of samples but we didn't actually write any samples
     if (idx_end>max_nr_samples || nr_samples==0){ //this batch of samples would have ended up outside of the maximum allocation of samples but we didn't actually write any samples
     // if (false){ //this batch of samples would have ended up outside of the maximum allocation of samples but we didn't actually write any samples
     }else{
@@ -660,62 +538,13 @@ sdf2alpha_gpu(
 
         for (int i=0; i<nr_samples-1; i++) { //WE DO this loop up until the last sample, because we need to acces in this loop both cur and next sample
            
-           
-
-
-
-            // """
-            // Up sampling give a fixed inv_s
-            // """
-            // batch_size, n_samples = z_vals.shape
-            // pts = rays_o[:, None, :] + rays_d[:, None, :] * z_vals[..., :, None]  # n_rays, n_samples, 3
-            // # radius = torch.linalg.norm(pts, ord=2, dim=-1, keepdim=False)
-            // # inside_sphere = (radius[:, :-1] < 1.0) | (radius[:, 1:] < 1.0)
-            // sdf = sdf.reshape(batch_size, n_samples)
-            // prev_sdf, next_sdf = sdf[:, :-1], sdf[:, 1:]
-            // prev_z_vals, next_z_vals = z_vals[:, :-1], z_vals[:, 1:]
-            // mid_sdf = (prev_sdf + next_sdf) * 0.5
-            // cos_val = (next_sdf - prev_sdf) / (next_z_vals - prev_z_vals + 1e-5)
-
-            // # ----------------------------------------------------------------------------------------------------------
-            // # Use min value of [ cos, prev_cos ]
-            // # Though it makes the sampling (not rendering) a little bit biased, this strategy can make the sampling more
-            // # robust when meeting situations like below:
-            // #
-            // # SDF
-            // # ^
-            // # |\          -----x----...
-            // # | \        /
-            // # |  x      x
-            // # |---\----/-------------> 0 level
-            // # |    \  /
-            // # |     \/
-            // # |
-            // # ----------------------------------------------------------------------------------------------------------
-            // prev_cos_val = torch.cat([torch.zeros([batch_size, 1]), cos_val[:, :-1]], dim=-1)
-            // cos_val = torch.stack([prev_cos_val, cos_val], dim=-1)
-            // cos_val, _ = torch.min(cos_val, dim=-1, keepdim=False)
-            // # cos_val = cos_val.clip(-1e3, 0.0) * inside_sphere
-            // cos_val = cos_val.clip(-1e3, 0.0) 
-
-            // dist = (next_z_vals - prev_z_vals)
-            // prev_esti_sdf = mid_sdf - cos_val * dist * 0.5
-            // next_esti_sdf = mid_sdf + cos_val * dist * 0.5
-            // prev_cdf = torch.sigmoid(prev_esti_sdf * inv_s)
-            // next_cdf = torch.sigmoid(next_esti_sdf * inv_s)
-            // alpha = (prev_cdf - next_cdf + 1e-5) / (prev_cdf + 1e-5)
-
-            // float dt=dt_uniform_samples;
             float dt=samples_dt[idx_start+i][0];
-            // printf("dt is %f \n",dt);
-
 
 
             float prev_sdf=sdf_samples[idx_start+i][0];
             float next_sdf=sdf_samples[idx_start+i+1][0];
             float mid_sdf = (prev_sdf + next_sdf) * 0.5;
             float cos_val = (next_sdf - prev_sdf) / clamp_min(dt, 1e-6); //TODO change to clamped_min
-            //TODO implement this prev_cos and cos thing
             cos_val = clamp(cos_val,-1e3, 0.0) ;
             float prev_esti_sdf = mid_sdf - cos_val * dt * 0.5;
             float next_esti_sdf = mid_sdf + cos_val * dt * 0.5;
@@ -725,8 +554,6 @@ sdf2alpha_gpu(
 
             alpha_samples[idx_start+i][0]=alpha;
 
-            
-            
 
         }
 
@@ -770,8 +597,6 @@ sum_over_each_ray_gpu(
     }else{
 
 
-        // float val_sum=0;
-        // float4 val_sum=make_float4(0,0,0,0);
         float val_sum[val_dim]{0};
         for (int i=0; i<nr_samples; i++) { 
             
@@ -779,8 +604,6 @@ sum_over_each_ray_gpu(
                 float val=sample_values[idx_start+i][v];
                 val_sum[v]+=val;
             }
-            // val_sum+=val;
-            
             
 
         }
@@ -832,7 +655,6 @@ cumsum_over_each_ray_gpu(
     int nr_samples=0;
     get_start_end_ray_indices(nr_samples, idx_start, idx_end, idx, rays_have_equal_nr_of_samples, fixed_nr_of_samples_per_ray, ray_start_end_idx  );
 
-    // if (idx_end>max_nr_samples){ //this batch of samples would have ended up outside of the maximum allocation of samples but we didn't actually write any samples
     if (idx_end>max_nr_samples || nr_samples==0){ //this batch of samples would have ended up outside of the maximum allocation of samples but we didn't actually write any samples
     // if (false){ //this batch of samples would have ended up outside of the maximum allocation of samples but we didn't actually write any samples
     }else{
@@ -898,7 +720,6 @@ compute_cdf_gpu(
     int nr_samples=0;
     get_start_end_ray_indices(nr_samples, idx_start, idx_end, idx, rays_have_equal_nr_of_samples, fixed_nr_of_samples_per_ray, ray_start_end_idx  );
 
-    // if (idx_end>max_nr_samples){ //this batch of samples would have ended up outside of the maximum allocation of samples but we didn't actually write any samples
     if (idx_end>max_nr_samples || nr_samples==0){ //this batch of samples would have ended up outside of the maximum allocation of samples but we didn't actually write any samples
     // if (false){ //this batch of samples would have ended up outside of the maximum allocation of samples but we didn't actually write any samples
     }else{
@@ -943,31 +764,16 @@ int midpoint(int a, int b){
 __device__
 int binary_search(const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits>& sample_cdf, float val, int imin, int imax){
     int nr_iters=0;
-    // printf("binary search for %f \n",val);
     while (imax >= imin) {
-        // printf("iter %d \n",nr_iters);
         int imid = midpoint(imin, imax);
-        // printf("imin, imax %d,%d , imid is %d \n",imin, imax, imid);
         float cdf = sample_cdf[imid][0];
-        // printf("cdf at imid %f \n", cdf);
-        // if(e == 0) {
-        //     return imid;
-        // } else if (e < 0) {
-        //     imin = imid;
-        // } else {         
-        //     imax = imid;
-        // }
         if(cdf>val){
             imax=imid;
-            // printf("cdf is higher than val. imin,imax are %d,%d \n", imin, imax);
         }else{
             imin=imid;
-            // printf("cdf is lower than val. imin,imax are %d,%d \n", imin, imax);
         }
 
         if( (imax-imin)==1 ){
-            // printf("imax and imin are 1 apart \n");
-            // printf("returning- cdf at mid %f, cdf at min %f \n", sample_cdf[imid][0], sample_cdf[imin][0] );
             return imax;
         }
 
@@ -977,8 +783,6 @@ int binary_search(const torch::PackedTensorAccessor32<float,2,torch::RestrictPtr
 
 
     }
-
-    // printf("exited loop imin,imax are %d,%d \n", imin, imax);
 
 
     return imax;
@@ -1005,10 +809,7 @@ importance_sample_gpu(
     torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> out_samples_pos,
     torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> out_samples_dirs,
     torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> out_samples_z,
-    // torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> out_samples_dt,
-    // torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> out_ray_fixed_dt,
     torch::PackedTensorAccessor32<int,2,torch::RestrictPtrTraits> out_ray_start_end_idx
-    // torch::PackedTensorAccessor32<int,1,torch::RestrictPtrTraits> out_cur_nr_samples
     ) {
 
     int idx = blockIdx.x * blockDim.x + threadIdx.x; //each thread will deal with a new value
@@ -1037,16 +838,6 @@ importance_sample_gpu(
     float fixed_dt=ray_fixed_dt[idx][0];
 
 
-    // //if we have onyl 1 sample, the cdf will be just one value which is 0, the binary search will run forever
-    // if(nr_samples<=1){
-    //     for (int i=0; i<nr_importance_samples; i++) {
-    //     }
-    //     return;
-    // }
-
-
-
-
 
     // if (idx_end>max_nr_samples){ //this batch of samples would have ended up outside of the maximum allocation of samples but we didn't actually write any samples
     if (idx_end>max_nr_samples || nr_samples==0){ //this batch of samples would have ended up outside of the maximum allocation of samples but we didn't actually write any samples
@@ -1071,17 +862,6 @@ importance_sample_gpu(
 
 
         for (int i=0; i<nr_importance_samples; i++) {
-            //for each sample, get a value between 0 and 1 (make sure there are ordered so lower samples have lower rand_nr)   
-            // float uniform_rand=map_range_val( (float)i, 0, nr_importance_samples-1, 0+0.5/nr_importance_samples, 1-0.5/nr_importance_samples ); //uniform between 0+0.5/nr_importance_samples and 1-0.5/nr_importance_samples. This is what the neus_sample_pdf does
-            // if(jitter_samples){
-            //     rng.advance(idx); //since all the threads start with the same seed, we need to advance this thread so it gets other numbers different than the otehrs
-            //     float rand=rng.next_float();
-            //     //move [-0.5/nr_importance_samples, + 0.5/nr_importance_samples]
-            //     float mov=0.5/nr_importance_samples;
-            //     uniform_rand+=map_range_val(rand, 0.0, 1.0,  -mov, +mov );
-            // }
-
-
             //get the distance between samples, in the [0,1] range
             //if we want for example to create 1 sample, then the uniform rand should be 0.5, so just in the middle of the [0,1] range
             //if we create 2 samples, the uniform rand for each would be 0.33 and 0.66
@@ -1107,7 +887,6 @@ importance_sample_gpu(
             int imin=max(imax-1, 0);
             float cdf_max=sample_cdf[imax][0];
             float cdf_min=sample_cdf[imin][0];
-            // printf("uniform_rand %f, imax is %d, imin %d, cdf_max %f cdf_min %f \n", uniform_rand, imax, imin, cdf_max, cdf_min);
             if(cdf_min>uniform_rand || cdf_max<uniform_rand){
                 //compute the maximum cdf and minimum
                 float minimum_cdf=99999;
@@ -1117,7 +896,7 @@ importance_sample_gpu(
                     if (cdf<minimum_cdf) minimum_cdf=cdf;
                     if (cdf>maximum_cdf) maximum_cdf=cdf;
                 }
-                printf("wtf uniform_rand %f, cdf_min %f, cdf_max %f, imax is %d MinAndMax over all samples %f,%f nrsamples %d \n", uniform_rand, cdf_min, cdf_max, imax, minimum_cdf, maximum_cdf, nr_samples);
+                // printf("wtf uniform_rand %f, cdf_min %f, cdf_max %f, imax is %d MinAndMax over all samples %f,%f nrsamples %d \n", uniform_rand, cdf_min, cdf_max, imax, minimum_cdf, maximum_cdf, nr_samples);
 
             }
 
@@ -1282,10 +1061,8 @@ combine_uniform_samples_with_imp_gpu(
         }
         bool adding_uniform_sample = z_uniform < z_imp;
 
-        // printf("iter %d idx_cur_uniform,cur_imp, %d,%d  , zuni,zimp  %f,%f \n", i, idx_cur_uniform, idx_cur_imp, z_uniform, z_imp);
         
         if(adding_uniform_sample){
-            // printf("Adding zuniform %f \n", z_uniform);
             //write the curent uniform sample
             float3 pos = ray_origin+z_uniform*ray_dir;
             //store positions
@@ -1353,121 +1130,6 @@ combine_uniform_samples_with_imp_gpu(
 
 }
 
-// __global__ void 
-// compact_ray_samples_gpu(
-//     const int nr_rays,
-//     //samples_packed
-//     const int uniform_max_nr_samples,
-//     const torch::PackedTensorAccessor32<int,2,torch::RestrictPtrTraits> uniform_ray_start_end_idx,
-//     const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> uniform_ray_fixed_dt,
-//     const bool uniform_rays_have_equal_nr_of_samples,
-//     const int uniform_fixed_nr_of_samples_per_ray,
-//     const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> uniform_samples_z,
-//     const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> uniform_samples_dt,
-//     const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> uniform_samples_sdf,
-//     const bool uniform_has_sdf,
-//     const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> uniform_samples_pos,
-//     const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> uniform_samples_dirs,
-//     //output
-//     torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> compressed_samples_pos,
-//     torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> compressed_samples_dirs,
-//     torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> compressed_samples_z,
-//     torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> compressed_samples_dt,
-//     torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> compressed_samples_sdf,
-//     torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> compressed_ray_fixed_dt,
-//     torch::PackedTensorAccessor32<int,2,torch::RestrictPtrTraits> compressed_ray_start_end_idx,
-//     torch::PackedTensorAccessor32<int,1,torch::RestrictPtrTraits> compressed_cur_nr_samples
-//     ) {
-
-//     int idx = blockIdx.x * blockDim.x + threadIdx.x; //each thread will deal with a new value
-
-//     if(idx>=nr_rays){ //don't go out of bounds
-//         return;
-//     }
-
-
-
-//     //get the indexes of the start and end sample
-//     int uniform_idx_start=0;
-//     int uniform_idx_end=0;
-//     int uniform_nr_samples=0;
-//     get_start_end_ray_indices(uniform_nr_samples, uniform_idx_start, uniform_idx_end, idx, uniform_rays_have_equal_nr_of_samples, uniform_fixed_nr_of_samples_per_ray, uniform_ray_start_end_idx  );
-
-//     //preload some other stuff
-//     float fixed_dt=uniform_ray_fixed_dt[idx][0];
-
-//     //caulcate how many samples we need for this ray
-//     int compressed_nr_samples=uniform_nr_samples;
-
-//     //too low nr of samples
-//     if(uniform_nr_samples<=1){
-//         //we set the ray quantities to 0 and there is nothing to set in the per_sample quantities because we have no samples
-//         compressed_ray_fixed_dt[idx][0]=0;
-//         compressed_ray_start_end_idx[idx][0]=0;
-//         compressed_ray_start_end_idx[idx][1]=0;
-//         return;
-//     }
-    
-//     //allocate similar to how we do in the occupancy grid
-//     int compressed_indx_start_sample=atomicAdd(&compressed_cur_nr_samples[0],compressed_nr_samples);
-//     compressed_ray_start_end_idx[idx][0]=compressed_indx_start_sample;
-//     compressed_ray_start_end_idx[idx][1]=compressed_indx_start_sample+compressed_nr_samples; 
-
-//     // if( (compressed_indx_start_sample+compressed_nr_samples)>compressed_max_nr_samples){
-//     //     printf("this really shouldn't happen that we are writing more samples than the combined_max_nr_samples. How did that happen \n");
-//     //     return;
-//     // }
-
-
-//     // float t_exit=ray_t_exit[idx][0];
-
-
-
-//     compressed_ray_fixed_dt[idx][0]=fixed_dt;
-
-//     //start writing all the samples
-//     for(int i=0; i<compressed_nr_samples; i++){
-        
-//         // printf("Adding zuniform %f \n", z_uniform);
-//         //write the curent uniform sample
-//         // float3 pos = ray_origin+z_uniform*ray_dir;
-//         //store positions
-//         compressed_samples_pos[compressed_indx_start_sample+i][0]=uniform_samples_pos[uniform_idx_start+i][0];
-//         compressed_samples_pos[compressed_indx_start_sample+i][1]=uniform_samples_pos[uniform_idx_start+i][1];
-//         compressed_samples_pos[compressed_indx_start_sample+i][2]=uniform_samples_pos[uniform_idx_start+i][2];
-//         //store dirs
-//         compressed_samples_dirs[compressed_indx_start_sample+i][0]=uniform_samples_dirs[uniform_idx_start+i][0];
-//         compressed_samples_dirs[compressed_indx_start_sample+i][1]=uniform_samples_dirs[uniform_idx_start+i][1];
-//         compressed_samples_dirs[compressed_indx_start_sample+i][2]=uniform_samples_dirs[uniform_idx_start+i][2];
-//         //store z
-//         compressed_samples_z[compressed_indx_start_sample+i][0]=uniform_samples_z[uniform_idx_start+i][0];
-//         //store sdf if needed
-//         if (uniform_has_sdf){
-//             compressed_samples_sdf[compressed_indx_start_sample+i][0]=uniform_samples_sdf[uniform_idx_start+i][0];
-//         }
-
-//         compressed_samples_dt[compressed_indx_start_sample+i][0]=uniform_samples_dt[uniform_idx_start+i][0];
-        
-//     }
-
-
-//     // //now, that we have all the samples, we can also write dt since dt is the distance from cur to next
-//     // for(int i=0; i<compressed_nr_samples-1; i++){
-//     //     float cur_z=compressed_samples_z[compressed_indx_start_sample+i][0];
-//     //     float next_z=compressed_samples_z[compressed_indx_start_sample+i+1][0];
-//     //     float dt=next_z-cur_z;
-//     //     dt=min(dt, fixed_dt);
-//     //     compressed_samples_dt[compressed_indx_start_sample+i][0]=dt;
-//     // }
-//     // //last combined sample
-//     // float last_sample_z=compressed_samples_z[compressed_indx_start_sample+compressed_nr_samples-1][0];
-//     // float remaining_dist_until_border=t_exit-last_sample_z;
-//     // compressed_samples_dt[compressed_indx_start_sample+compressed_nr_samples-1][0]=clamp(remaining_dist_until_border, 0.0, fixed_dt);
-//     // // combined_samples_dt[combined_indx_start_sample+combined_nr_samples-1][0]=fixed_dt;
-
-
-// }
-
 
 
 __global__ void 
@@ -1499,7 +1161,6 @@ cumprod_alpha2transmittance_backward_gpu(
     int nr_samples=0;
     get_start_end_ray_indices(nr_samples, idx_start, idx_end, idx, rays_have_equal_nr_of_samples, fixed_nr_of_samples_per_ray, ray_start_end_idx  );
 
-    // if (idx_end>max_nr_samples){ //this batch of samples would have ended up outside of the maximum allocation of samples but we didn't actually write any samples
     if (idx_end>max_nr_samples || nr_samples==0){ //this batch of samples would have ended up outside of the maximum allocation of samples but we didn't actually write any samples
     // if (false){ //this batch of samples would have ended up outside of the maximum allocation of samples but we didn't actually write any samples
     }else{
@@ -1572,7 +1233,6 @@ integrate_with_weights_backward_gpu(
     int nr_samples=0;
     get_start_end_ray_indices(nr_samples, idx_start, idx_end, idx, rays_have_equal_nr_of_samples, fixed_nr_of_samples_per_ray, ray_start_end_idx  );
 
-    // if (idx_end>max_nr_samples){ //this batch of samples would have ended up outside of the maximum allocation of samples but we didn't actually write any samples
     if (idx_end>max_nr_samples || nr_samples==0){ //this batch of samples would have ended up outside of the maximum allocation of samples but we didn't actually write any samples
     // if (false){ //this batch of samples would have ended up outside of the maximum allocation of samples but we didn't actually write any samples
     }else{
@@ -1637,7 +1297,6 @@ sum_over_each_ray_backward_gpu(
     int nr_samples=0;
     get_start_end_ray_indices(nr_samples, idx_start, idx_end, idx, rays_have_equal_nr_of_samples, fixed_nr_of_samples_per_ray, ray_start_end_idx  );
 
-    // if (idx_end>max_nr_samples){ //this batch of samples would have ended up outside of the maximum allocation of samples but we didn't actually write any samples
     if (idx_end>max_nr_samples || nr_samples==0){ //this batch of samples would have ended up outside of the maximum allocation of samples but we didn't actually write any samples
     // if (false){ //this batch of samples would have ended up outside of the maximum allocation of samples but we didn't actually write any samples
     }else{
