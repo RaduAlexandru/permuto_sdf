@@ -8,8 +8,6 @@
 
 #include "torch/torch.h"
 
-// #include "permuto_sdf/jitify_helper/jitify_options.hpp" //Needs to be added BEFORE jitify because this defined the include paths so that the kernels cna find each other
-// #include "jitify/jitify.hpp"
 #include <Eigen/Dense>
 
 #ifdef HSDF_WITH_GL
@@ -24,7 +22,6 @@
 namespace easy_pbr{
     class Mesh;
     class MeshGL;
-    // class Frame;
     class Viewer;
 }
 namespace radu { namespace utils{
@@ -35,11 +32,7 @@ namespace radu { namespace utils{
 
 
 
-// class Lattice : public torch::autograd::Variable, public std::enable_shared_from_this<Lattice>{
-// class Lattice : public at::Tensor, public std::enable_shared_from_this<Lattice>{
 class PermutoSDF : public std::enable_shared_from_this<PermutoSDF>{
-// class Lattice : public torch::Tensor, public std::enable_shared_from_this<Lattice>{
-// class Lattice :public THPVariable, public std::enable_shared_from_this<Lattice>{
 public:
     template <class ...Args>
     static std::shared_ptr<PermutoSDF> create( Args&& ...args ){
@@ -58,7 +51,6 @@ public:
     static torch::Tensor update_errors_of_matching_indices(const torch::Tensor& old_indices, const torch::Tensor& old_errors, const torch::Tensor& new_indices, const torch::Tensor& new_errors);
     static torch::Tensor meshgrid3d(const float min, const float max, const int nr_points_per_dim);
     //for sampling with low discrepancy
-    // std::vector<unsigned> init_sampler();
     static double phi(const unsigned &i);
     static Eigen::VectorXi low_discrepancy2d_sampling(const int nr_samples, const int height, const int width);
 
@@ -66,7 +58,6 @@ public:
     #ifdef HSDF_WITH_GL
         void init_opengl();
         void compile_shaders();
-        // std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor> render_atributes(const std::shared_ptr<easy_pbr::Mesh>& mesh, const easy_pbr::Frame frame);
         torch::Tensor render_atributes(const std::shared_ptr<easy_pbr::Mesh>& mesh, const easy_pbr::Frame frame);
 
         //render into uvt
@@ -76,7 +67,6 @@ public:
 
     std::shared_ptr<easy_pbr::Viewer> m_view;
 
-    // std::vector< std::shared_ptr<easy_pbr::MeshGL> > m_meshes_gl; //stored the gl meshes which will get updated if the meshes in the scene are dirty
 
     std::shared_ptr<radu::utils::RandGenerator> m_rand_gen;
     static std::shared_ptr<radu::utils::RandGenerator> m_rand_gen_static;

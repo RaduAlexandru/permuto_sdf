@@ -1,13 +1,7 @@
 #pragma once
 
 
-// #include "permuto_sdf/jitify_helper/jitify_helper.cuh"
 #include <torch/torch.h>
-// #include <cuda.h>
-// #include <cuda_runtime.h>
-// #include <cuda_runtime_api.h>
-// #include "device_launch_parameters.h" //needed for threadIdx and blockDim 
-// #include <torch/torch.h>
 #include "permuto_sdf/helper_math.h"
 
 // //Add this header after we add all cuda stuff because we need the profiler to have cudaDeviceSyncronize defined
@@ -28,7 +22,6 @@
 
 
 __global__ void 
-// __launch_bounds__(BLOCK_SIZE) //since the block size is known at compile time we can specify it to the kernel and therefore cuda doesnt need to use heuristics based on code complexity to minimize registry usage
 random_rays_from_reel_gpu(
     const int nr_rays,
     const int nr_images,
@@ -131,36 +124,10 @@ random_rays_from_reel_gpu(
     gt_mask[idx][0]=mask_pixel;
 
 
-
-
-
-
-
-
-
-
-    //  #multiply at various depths
-    //     nr_rays=pixels_selected_cam_coords.shape[0]
-        
-
-    //     pixels_selected_cam_coords=pixels_selected_cam_coords.view(nr_rays, 3)
-
-
-
-    //     #get from cam_coords to world_coords
-    //     tf_world_cam=frame.tf_cam_world.inverse()
-    //     R=torch.from_numpy( tf_world_cam.linear() ).to("cuda").float()
-    //     t=torch.from_numpy( tf_world_cam.translation() ).to("cuda").view(1,3).float()
-    //     pixels_selected_world_coords=torch.matmul(R, pixels_selected_cam_coords.transpose(0,1).contiguous() ).transpose(0,1).contiguous()  + t
-    //     #get direction
-    //     ray_dirs = pixels_selected_world_coords-t
-    //     ray_dirs=F.normalize(ray_dirs, p=2, dim=1)
-
 }
 
 
 __global__ void 
-// __launch_bounds__(BLOCK_SIZE) //since the block size is known at compile time we can specify it to the kernel and therefore cuda doesnt need to use heuristics based on code complexity to minimize registry usage
 rays_from_reprojection_reel_gpu(
     const int nr_points,
     const int nr_images,
@@ -218,10 +185,7 @@ rays_from_reprojection_reel_gpu(
     float3 point_2d_screen_coord; 
     point_2d_screen_coord.x= pixel_cam_coord.x *fx/pixel_cam_coord.z + cx;
     point_2d_screen_coord.y= pixel_cam_coord.y *fy/pixel_cam_coord.z + cy;
-    // point_2d_screen_coord.x=point_2d_screen_coord.x/pixel_cam_coord.z;
-    // point_2d_screen_coord.y=point_2d_screen_coord.y/pixel_cam_coord.z;
-    // point_2d_screen_coord.x+=0.5;
-    // point_2d_screen_coord.y+=0.5;
+    
 
     //get the pixel that we are getting from here
     bool is_within_bounds=true;
@@ -309,7 +273,6 @@ rays_from_reprojection_reel_gpu(
 
 
 __global__ void 
-// __launch_bounds__(BLOCK_SIZE) //since the block size is known at compile time we can specify it to the kernel and therefore cuda doesnt need to use heuristics based on code complexity to minimize registry usage
 spherical_harmonics_gpu(
     const int nr_elements,
     const int degree,
@@ -324,10 +287,6 @@ spherical_harmonics_gpu(
         return;
     }
 
-
-    // float x = dirs[idx][0] * 2.f - 1.f;
-	// float y = dirs[idx][1] * 2.f - 1.f;
-	// float z = dirs[idx][2] * 2.f - 1.f;
 
     float x = dirs[idx][0];
 	float y = dirs[idx][1];
@@ -407,7 +366,6 @@ spherical_harmonics_gpu(
 
 
 __global__ void 
-// __launch_bounds__(BLOCK_SIZE) //since the block size is known at compile time we can specify it to the kernel and therefore cuda doesnt need to use heuristics based on code complexity to minimize registry usage
 update_errors_of_matching_indices_gpu(
     const int nr_old_errors,
     const int nr_new_errors,
