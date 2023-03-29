@@ -12,8 +12,6 @@
 #include "permuto_sdf/RaySampler.cuh"
 #include "permuto_sdf/RaySamplesPacked.cuh"
 #include "permuto_sdf/TrainParams.h"
-// #include "permuto_sdf/ModelParams.h"
-// #include "permuto_sdf/EvalParams.h"
 #include "permuto_sdf/NGPGui.h"
 
 #include "easy_pbr/Viewer.h"
@@ -57,19 +55,6 @@ PYBIND11_MODULE(permuto_sdf, m) {
     .def_readwrite("m_radius", &Sphere::m_radius ) 
     ;
 
-    // py::class_<VoxelGrid> (m, "VoxelGrid")
-    // .def(py::init<>())
-    // .def_static("slice", &VoxelGrid::slice ) 
-    // .def_static("splat", &VoxelGrid::splat) 
-    // .def_static("upsample_grid", &VoxelGrid::upsample_grid) 
-    // .def_static("get_nr_of_mips", &VoxelGrid::get_nr_of_mips ) 
-    // .def_static("get_size_for_mip", &VoxelGrid::get_size_for_mip ) 
-    // .def_static("get_size_downsampled_grid", &VoxelGrid::get_size_downsampled_grid ) 
-    // .def_static("get_size_upsampled_grid", &VoxelGrid::get_size_upsampled_grid ) 
-    // .def_static("compute_grid_points", &VoxelGrid::compute_grid_points ) 
-    // .def_static("slice_cpu", &VoxelGrid::slice_cpu ) 
-    // ;
-
 
     py::class_<OccupancyGrid> (m, "OccupancyGrid")
     .def(py::init<const int, const float, const Eigen::Vector3f>())
@@ -83,7 +68,6 @@ PYBIND11_MODULE(permuto_sdf, m) {
     .def("get_nr_voxels_per_dim", &OccupancyGrid::get_nr_voxels_per_dim ) 
     .def("compute_grid_points", &OccupancyGrid::compute_grid_points ) 
     .def("compute_random_sample_of_grid_points", &OccupancyGrid::compute_random_sample_of_grid_points ) 
-    // .def("create_cubes_for_occupied_voxels", &OccupancyGrid::create_cubes_for_occupied_voxels ) 
     .def("check_occupancy", &OccupancyGrid::check_occupancy ) 
     .def("update_with_density", &OccupancyGrid::update_with_density ) 
     .def("update_with_density_random_sample", &OccupancyGrid::update_with_density_random_sample ) 
@@ -127,7 +111,6 @@ PYBIND11_MODULE(permuto_sdf, m) {
     .def_static("compute_cdf", &VolumeRendering::compute_cdf )  
     .def_static("importance_sample", &VolumeRendering::importance_sample )  
     .def_static("combine_uniform_samples_with_imp", &VolumeRendering::combine_uniform_samples_with_imp )  
-    // .def_static("compact_ray_samples", &VolumeRendering::compact_ray_samples )  
     //backward passes
     .def_static("volume_render_nerf_backward", &VolumeRendering::volume_render_nerf_backward ) 
     .def_static("cumprod_alpha2transmittance_backward", &VolumeRendering::cumprod_alpha2transmittance_backward )  
@@ -146,15 +129,10 @@ PYBIND11_MODULE(permuto_sdf, m) {
     //TrainParams
     py::class_<TrainParams, std::shared_ptr<TrainParams>   > (m, "TrainParams", py::module_local())
     .def_static("create", &TrainParams::create<const std::string> ) //for templated methods like this one we need to explicitly instantiate one of the arguments
-    // .def("dataset_name",  &TrainParams::dataset_name )
-    // .def("with_viewer",  &TrainParams::with_viewer )
     .def("with_visdom",  &TrainParams::with_visdom )
     .def("with_tensorboard",  &TrainParams::with_tensorboard )
     .def("with_wandb",  &TrainParams::with_wandb )
-    // .def("lr",  &TrainParams::lr )
-    // .def("weight_decay",  &TrainParams::weight_decay )
     .def("save_checkpoint",  &TrainParams::save_checkpoint )
-    // .def("checkpoint_path",  &TrainParams::checkpoint_path )
     //setters
     .def("set_with_visdom",  &TrainParams::set_with_visdom )
     .def("set_with_tensorboard",  &TrainParams::set_with_tensorboard )
@@ -162,33 +140,6 @@ PYBIND11_MODULE(permuto_sdf, m) {
     .def("set_save_checkpoint",  &TrainParams::set_save_checkpoint )
     ;
 
-    // //EvalParams
-    // py::class_<EvalParams, std::shared_ptr<EvalParams>   > (m, "EvalParams", py::module_local())
-    // .def_static("create", &EvalParams::create<const std::string> ) //for templated methods like this one we need to explicitly instantiate one of the arguments
-    // .def("dataset_name",  &EvalParams::dataset_name )
-    // .def("with_viewer",  &EvalParams::with_viewer )
-    // .def("checkpoint_path",  &EvalParams::checkpoint_path )
-    // .def("do_write_predictions",  &EvalParams::do_write_predictions )
-    // .def("output_predictions_path",  &EvalParams::output_predictions_path )
-    // ;
-
-    // //ModelParams
-    // py::class_<ModelParams, std::shared_ptr<ModelParams>   > (m, "ModelParams", py::module_local())
-    // .def_static("create", &ModelParams::create<const std::string> ) //for templated methods like this one we need to explicitly instantiate one of the arguments
-    // .def("positions_mode",  &ModelParams::positions_mode )
-    // .def("values_mode",  &ModelParams::values_mode )
-    // .def("pointnet_channels_per_layer",  &ModelParams::pointnet_channels_per_layer )
-    // .def("pointnet_start_nr_channels",  &ModelParams::pointnet_start_nr_channels )
-    // .def("nr_downsamples",  &ModelParams::nr_downsamples )
-    // .def("nr_blocks_down_stage",  &ModelParams::nr_blocks_down_stage )
-    // .def("nr_blocks_bottleneck",  &ModelParams::nr_blocks_bottleneck )
-    // .def("nr_blocks_up_stage",  &ModelParams::nr_blocks_up_stage )
-    // .def("nr_levels_down_with_normal_resnet",  &ModelParams::nr_levels_down_with_normal_resnet )
-    // .def("nr_levels_up_with_normal_resnet",  &ModelParams::nr_levels_up_with_normal_resnet )
-    // .def("compression_factor",  &ModelParams::compression_factor )
-    // .def("dropout_last_layer",  &ModelParams::dropout_last_layer )
-    // // .def("experiment",  &ModelParams::experiment )
-    // ;
 
     //NGPGui
     py::class_<NGPGui, std::shared_ptr<NGPGui>   > (m, "NGPGui", py::module_local())
@@ -197,34 +148,10 @@ PYBIND11_MODULE(permuto_sdf, m) {
     .def_readwrite("m_control_view",  &NGPGui::m_control_view )
     .def_readwrite("m_time_val",  &NGPGui::m_time_val )
     .def_readwrite("m_c2f_progress",  &NGPGui::m_c2f_progress )
-    // .def_readwrite("m_nr_samples_per_ray",  &NGPGui::m_nr_samples_per_ray )
-    // .def_readwrite("m_inv_s",  &NGPGui::m_inv_s )
-    // .def_readwrite("m_inv_s_min",  &NGPGui::m_inv_s_min )
-    // .def_readwrite("m_inv_s_max",  &NGPGui::m_inv_s_max )
-    // .def_readwrite("m_volsdf_beta",  &NGPGui::m_volsdf_beta )
-    // .def_readwrite("m_neus_cos_anneal",  &NGPGui::m_neus_cos_anneal )
-    // .def_readwrite("m_neus_variance",  &NGPGui::m_neus_variance )
-    // .def_readwrite("m_nerf_surface_beta",  &NGPGui::m_nerf_surface_beta )
-    // .def_readwrite("m_nerf_surface_std",  &NGPGui::m_nerf_surface_std )
-    // .def_readwrite("m_surface_prob_sigma",  &NGPGui::m_surface_prob_sigma )
-    // .def_readwrite("m_surface_prob_height",  &NGPGui::m_surface_prob_height )
-    // .def_readwrite("m_soft_opacity_sigma",  &NGPGui::m_soft_opacity_sigma )
-    // .def_readwrite("m_sphere_y_shift",  &NGPGui::m_sphere_y_shift )
-    // .def_readwrite("m_show_unisurf_weights",  &NGPGui::m_show_unisurf_weights )
-    // .def_readwrite("m_show_volsdf_weights",  &NGPGui::m_show_volsdf_weights )
-    // .def_readwrite("m_show_neus_weights",  &NGPGui::m_show_neus_weights )
-    // .def_readwrite("m_show_nerf_surface_weights",  &NGPGui::m_show_nerf_surface_weights )
-    // .def_readwrite("m_ray_origin_x_shift",  &NGPGui::m_ray_origin_x_shift )
-    // .def_readwrite("m_ray_origin_y_shift",  &NGPGui::m_ray_origin_y_shift )
     .def_readwrite("m_isolines_layer_z_coord",  &NGPGui::m_isolines_layer_z_coord )
     .def_readwrite("m_compute_full_layer",  &NGPGui::m_compute_full_layer )
     .def_readwrite("m_isoline_width",  &NGPGui::m_isoline_width )
     .def_readwrite("m_distance_between_isolines",  &NGPGui::m_distance_between_isolines )
-    // .def_readwrite("m_use_only_dense_grid",  &NGPGui::m_use_only_dense_grid )
-    // .def_readwrite("m_spp",  &NGPGui::m_spp )
-    // .def_readwrite("m_render_mitsuba",  &NGPGui::m_render_mitsuba )
-    // .def_readwrite("m_mitsuba_res_x",  &NGPGui::m_mitsuba_res_x )
-    // .def_readwrite("m_mitsuba_res_y",  &NGPGui::m_mitsuba_res_y )
     .def_readwrite("m_use_controlable_frame",  &NGPGui::m_use_controlable_frame )
     .def_readwrite("m_frame_idx_from_dataset",  &NGPGui::m_frame_idx_from_dataset )
     .def_readwrite("m_render_full_img",  &NGPGui::m_render_full_img )
@@ -232,9 +159,7 @@ PYBIND11_MODULE(permuto_sdf, m) {
     .def_readwrite("m_nr_iters_sphere_tracing",  &NGPGui::m_nr_iters_sphere_tracing )
     .def_readwrite("m_sphere_trace_agressiveness",  &NGPGui::m_sphere_trace_agressiveness )
     .def_readwrite("m_sphere_trace_threshold_converged",  &NGPGui::m_sphere_trace_threshold_converged )
-    // .def_readwrite("m_sphere_trace_push_in_gradient_dir",  &NGPGui::m_sphere_trace_push_in_gradient_dir )
     .def_readwrite("m_chunk_size",  &NGPGui::m_chunk_size )
-    // .def_readwrite("m_error_map_max",  &NGPGui::m_error_map_max )
     ;
 
 
