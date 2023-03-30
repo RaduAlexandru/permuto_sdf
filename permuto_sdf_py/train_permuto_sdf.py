@@ -75,14 +75,14 @@ train_params=TrainParams.create(config_path)
 class HyperParamsPermutoSDF:
     s_mult=1.0 #multiplier for the scheduler. Lower values mean faster convergance at the cost of some accuracy
     lr= 1e-3
-    nr_iter_sphere_fit=4000*s_mult
-    forced_variance_finish_iter=35000*s_mult
+    nr_iter_sphere_fit=4000*s_mult                      #nr iters for training with sphere SDF
+    forced_variance_finish_iter=35000*s_mult            #nr iters until the SDF to density transform is sharp
     eikonal_weight=0.04
     curvature_weight=1.3
     lipshitz_weight=3e-6
     mask_weight=0.1
     offsurface_weight=1e-4
-    iter_start_reduce_curv=50000*s_mult
+    iter_start_reduce_curv=50000*s_mult                 #nr iters when we reduce the curvature loss
     iter_finish_reduce_curv=iter_start_reduce_curv+1001
     lr_milestones=[100000*s_mult,150000*s_mult,180000*s_mult,190000*s_mult]
     iter_finish_training=200000*s_mult
@@ -92,14 +92,14 @@ class HyperParamsPermutoSDF:
     min_dist_between_samples=0.0001
     max_nr_samples_per_ray=64 #for the foreground
     nr_samples_imp_sampling=16
-    do_importance_sampling=True #adds nr_samples_imp_samplingx2 more samples pery ray
+    do_importance_sampling=True                         #adds nr_samples_imp_samplingx2 more samples per ray
     use_color_calibration=True
     nr_rays=512
     sdf_geom_feat_size=32
     sdf_nr_iters_for_c2f=10000*s_mult
     rgb_nr_iters_for_c2f=1
     background_nr_iters_for_c2f=1
-    target_nr_of_samples=512*(64+16+16)
+    target_nr_of_samples=512*(64+16+16)             #the nr of rays are dynamically changed so that we use this nr of samples in a forward pass. you can reduce this for faster training or if your GPU has little VRAM
 hyperparams=HyperParamsPermutoSDF()
 
 
