@@ -28,7 +28,11 @@ $ cd permuto_sdf/docker
 $ ./build.sh
 $ ./run.sh
 ```
-This will build a docker image containing almost everything that is needed.
+This will build a docker image containing almost everything that is needed.  <br>
+If you encounter any issues like `docker: Error response from daemon: could not select device driver "" with capabilities: [[gpu]].`, try running the script `./permuto_sdf/docker/nvidia-container-runtime-script.sh`
+<br>
+
+
 
 
 PermutoSDF also depends on [EasyPBR], [DataLoaders] and [permutohedral_encoding] packages. Once you are inside the docker container (after running ./docker/run.sh) they can be easily installed with the following lines:
