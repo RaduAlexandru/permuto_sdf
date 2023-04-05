@@ -6,7 +6,6 @@ if [ "$#" -ne 0 ]; then
   return 1
 fi
 
-source config.txt
 
 # Build the docker image
 docker build\
