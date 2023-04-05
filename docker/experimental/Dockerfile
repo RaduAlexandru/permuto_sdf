@@ -1,7 +1,7 @@
-FROM nvcr.io/nvidia/pytorch:22.08-py3
+# FROM nvcr.io/nvidia/pytorch:22.08-py3
 
-# for torch 2.0 it needs nvidia driver>=530 and to disable the CONDA stuff from line 60 of this dockerfile
-# FROM nvcr.io/nvidia/pytorch:23.03-py3 
+# for torch 2.0 it needs nvidia driver>=530 
+FROM nvcr.io/nvidia/pytorch:23.03-py3 
 
 
 ARG user
@@ -58,11 +58,11 @@ RUN apt-get -y update \
     imagemagick
 
 ##### CONDA
-RUN ln -s /opt/conda/etc/profile.d/conda.sh /etc/profile.d/conda.sh 
-RUN echo ". /opt/conda/etc/profile.d/conda.sh" >> /.bashrc
+# RUN ln -s /opt/conda/etc/profile.d/conda.sh /etc/profile.d/conda.sh 
+# RUN echo ". /opt/conda/etc/profile.d/conda.sh" >> /.bashrc
 #ENV PATH /opt/conda/bin:$PATH
-RUN conda init bash
-SHELL ["conda", "run", "--no-capture-output",  "/bin/bash", "-c"]
+# RUN conda init bash
+# SHELL ["conda", "run", "--no-capture-output",  "/bin/bash", "-c"]
 
 #general deps
 RUN python3 -m pip install tensorboard==2.11.0 natsort piq scikit-learn scikit-image torchnet wandb hjson
