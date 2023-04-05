@@ -158,6 +158,8 @@ class SDF(torch.nn.Module):
         with torch.set_grad_enabled(False):
             self.mlp_sdf[-1].bias+=self.sdf_shift #faster if we just put it in the bias
 
+        # self.mlp_sdf=torch.compile(self.mlp_sdf, mode="max-autotune")
+
        
 
 

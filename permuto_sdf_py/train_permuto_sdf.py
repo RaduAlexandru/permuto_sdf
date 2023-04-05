@@ -61,6 +61,7 @@ if module_exists("apex"):
     has_apex=True
 else:
     has_apex=False
+# torch.backends.cuda.matmul.allow_tf32 = True
 
 
 config_file="train_permuto_sdf.cfg"
