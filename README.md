@@ -29,8 +29,10 @@ $ ./build.sh
 $ ./run.sh
 ```
 This will build a docker image containing almost everything that is needed.  <br>
-If you encounter any issues like `docker: Error response from daemon: could not select device driver "" with capabilities: [[gpu]].`, try running the script `./permuto_sdf/docker/nvidia-container-runtime-script.sh`
-<br>
+
+If you encounter any issues like `docker: Error response from daemon: could not select device driver "" with capabilities: [[gpu]].`, try running the script `./permuto_sdf/docker/nvidia-container-runtime-script.sh`<br>
+
+If you encounter issues like `unexpected status: 401 Unauthorized`, please create an account on the [NGC container registry](https://docs.nvidia.com/deeplearning/frameworks/user-guide/index.html#accessing_registry), obtain an API key as described [here](https://docs.nvidia.com/ngc/gpu-cloud/ngc-overview/index.html#generating-api-key) and finally login as shown [here](https://docs.nvidia.com/deeplearning/frameworks/user-guide/index.html#accessing_registry)
 
 
 
