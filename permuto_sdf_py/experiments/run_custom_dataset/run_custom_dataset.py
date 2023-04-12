@@ -88,7 +88,7 @@ def create_custom_dataset():
         translation_world_cam=calib_line_split[1:4] #translates from cam to world
         quaternion_world_cam=calib_line_split[4:8] #rotates from cam to world
         tf_world_cam=Affine3f()
-        tf_world_cam.set_quat(quaternion_world_cam)
+        tf_world_cam.set_quat(quaternion_world_cam) #assumes the quaternion is expressed as [qx,qy,qz,qw]
         tf_world_cam.set_translation(translation_world_cam)
         tf_cam_world=tf_world_cam.inverse() #here we get the tf_cam_world that we need
         frame.tf_cam_world=tf_cam_world
