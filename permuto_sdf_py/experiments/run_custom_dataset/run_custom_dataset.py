@@ -42,8 +42,8 @@ with_viewer=not args.no_viewer
 SCENE_SCALE=1.0
 SCENE_TRANSLATION=[0,0,0]
 IMG_SUBSAMPLE_FACTOR=1.0 #subsample the image to lower resolution in case you are running on a low VRAM GPU. The higher this number, the smaller the images
-DATASET_PATH="/media/rosu/Data/data/permuto_sdf_data/easy_pbr_renders/head/"
-
+DATASET_PATH="/media/rosu/Data/data/permuto_sdf_data/easy_pbr_renders/head/" #point this to wherever you downloaded the easypbr_data (see README.md for download link)
+ 
 def create_custom_dataset():
     #CREATE CUSTOM DATASET---------------------------
     #We need to fill easypbr.Frame objects into a list. Each Frame object contains the image for a specific camera together with extrinsics and intrinsics
@@ -145,6 +145,9 @@ def run():
     #CREATE CUSTOM DATASET---------------------------
     frames=create_custom_dataset() 
 
+    #print the scale of the scene which contains all the cameras.
+    print("scene centroid", Scene.get_centroid()) #aproximate center of our scene which consists of all frustum of the cameras
+    print("scene scale", Scene.get_scale()) #how big the scene is as a measure betwen the min and max of call cameras positions
 
     ##VISUALIZE
     # view=Viewer.create()

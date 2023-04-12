@@ -166,6 +166,9 @@ The results can be regenerated from the checkpoints by using the scripts in `cre
 
 We provide a small example of creating a custom dataset with [./permuto_sdf_py/experiments/run_custom_dataset/run_custom_dataset.py](./permuto_sdf_py/experiments/run_custom_dataset/run_custom_dataset.py). It currently loads from the EasyPBR dataset but it should be easily modifiable for your purposes. The main points is that you need images together with camera intrinsics and extrinsics. The script shows how to load the images and the format required for the camera intrinsics and extrinsics. Finally you need to scale and translate your scene so that your object of interest lies within the bounding sphere of radius 0.5. You have to modify this manually for your current dataset as it's difficult to provide a reliable and automatic way of selecting these parameters. When you first run the `run_custom_dataset.py` it will also print the scale and the origin of all the cameras you defined. Try to play around with `SCENE_SCALE` and `SCENE_TRANSLATION`. Note that you don't need to get your cameras to be within the bounding sphere, only the object you want reconstructed needs to be contained within it, the cameras can be outside of the sphere.
 
+Running the script should show something like this where the bounding sphere is in the center and in red are the frustums of all the cameras.
+<img src="imgs/custom_data.png" width="500"/>
+
 
 # License
 PermutoSDF is provided under the terms of the MIT license (see LICENSE). 
