@@ -48,6 +48,9 @@ def create_custom_dataset():
     #CREATE CUSTOM DATASET---------------------------
     #We need to fill easypbr.Frame objects into a list. Each Frame object contains the image for a specific camera together with extrinsics and intrinsics
     #intrinsics and extrinsics
+    assert os.path.exists(DATASET_PATH), "The dataset path does not exist. Please point to the path where you downloaded the EasyPBR renders"
+
+
     intrinics_extrinsics_file=os.path.join(DATASET_PATH,"poses_and_intrinsics.txt")
     with open(intrinics_extrinsics_file) as file:
         lines = [line.rstrip() for line in file]
