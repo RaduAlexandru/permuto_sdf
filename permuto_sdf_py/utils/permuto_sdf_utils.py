@@ -69,8 +69,10 @@ def loss_sphere_init(dataset_name, nr_points, aabb, model,  iter_nr_for_anneal )
     elif dataset_name=="multiface":
         loss, loss_sdf, gradient_error=sdf_loss_sphere(offsurface_points, offsurface_sdf, offsurface_sdf_gradients, sphere_radius=0.3, sphere_center=[0,0,0], distance_scale=1.0)
     else:
-        print("dataset not known")
-        exit()
+        # print("Using default sphere loss")
+        loss, loss_sdf, gradient_error=sdf_loss_sphere(offsurface_points, offsurface_sdf, offsurface_sdf_gradients, sphere_radius=0.3, sphere_center=[0,0,0], distance_scale=1.0)
+        # print("dataset not known")
+        # exit()
 
     return loss, loss_sdf, gradient_error
 

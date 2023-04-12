@@ -520,8 +520,10 @@ def create_bb_for_dataset(dataset_name):
     elif dataset_name=="bmvs":
         aabb=Sphere(0.5, [0,0,0])
     else:
-        print("UNKOWN datasetname in create_bb_for_dataset")
-        exit(1)
+        print("Using default sphere of radius 0.5")
+        aabb=Sphere(0.5, [0,0,0])
+        # print("UNKOWN datasetname in create_bb_for_dataset")
+        # exit(1)
 
     return aabb
 

@@ -12,6 +12,7 @@ import numpy as np
 import time
 import argparse
 import math
+import random
 
 import easypbr
 from easypbr  import *
@@ -243,7 +244,7 @@ def run_net_sphere_traced(frame, args, hyperparams, model_sdf, model_rgb, model_
 
 
 
-def train(args, config_path, hyperparams, train_params, loader_train, experiment_name, with_viewer, checkpoint_path, tensor_reel):
+def train(args, config_path, hyperparams, train_params, loader_train, experiment_name, with_viewer, checkpoint_path, tensor_reel, frames_train=None, hardcoded_cam_init=True):
 
 
     #train
@@ -254,7 +255,7 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
 
     first_time=True
 
-    if first_time and with_viewer:
+    if first_time and with_viewer and hardcoded_cam_init:
         view.m_camera.from_string(" 1.16767 0.373308  0.46992 -0.126008  0.545201 0.0833038 0.82458 -0.00165809  -0.0244027  -0.0279725 60 0.0502494 5024.94")
     
     aabb = create_bb_for_dataset(args.dataset)
@@ -276,7 +277,8 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
     model_rgb=RGB(in_channels=3, boundary_primitive=aabb, geom_feat_size_in=hyperparams.sdf_geom_feat_size, nr_iters_for_c2f=hyperparams.rgb_nr_iters_for_c2f).to("cuda")
     model_bg=NerfHash(4, boundary_primitive=aabb, nr_iters_for_c2f=hyperparams.background_nr_iters_for_c2f ).to("cuda") 
     if hyperparams.use_color_calibration:
-        model_colorcal=Colorcal(loader_train.nr_samples(), 0)
+        # model_colorcal=Colorcal(loader_train.nr_samples(), 0)
+        model_colorcal=Colorcal(tensor_reel.rgb_reel.shape[0], 0)
     else:
         model_colorcal=None
     if hyperparams.use_occupancy_grid:
@@ -435,6 +437,8 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
 
 
 
+        if with_viewer:
+            view.update()
 
         #save checkpoint
         if train_params.save_checkpoint() and phase.iter_nr%10000==0:
@@ -495,7 +499,10 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
                 model_rgb.eval()
                 model_bg.eval()
 
-                if isinstance(loader_train, DataLoaderPhenorobCP1):
+                # if isinstance(loader_train, DataLoaderPhenorobCP1):
+                    # frame=random.choice(frames_train)
+                # else:
+                if frames_train is not None:
                     frame=random.choice(frames_train)
                 else:
                     frame=phase.loader.get_random_frame() #we just get this frame so that the tensorboard can render from this frame
@@ -520,8 +527,8 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
                 cb["tensorboard_callback"].tensorboard_writer.add_image('permuto_sdf/' + phase.name + '/pred_normals', pred_normals_img_vis_alpha.squeeze(), phase.iter_nr)
 
 
-        if with_viewer:
-            view.update()
+        # if with_viewer:
+        #     view.update()
       
 
                    
