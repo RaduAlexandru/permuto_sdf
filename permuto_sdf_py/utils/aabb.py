@@ -85,6 +85,10 @@ class AABB:
         lo=torch.where( invalid_hit_all_dimensions, value_invalid_depth, lo)
         hi=torch.where( invalid_hit_all_dimensions, value_invalid_depth, hi)
 
+        #lo can end up being negative if the camera is inside the bounding box so we clamp it to zero so that t0 is always at least in front of the camera
+        #however making rays starting directly from the camera origin can lead to the regions just in front of the camera to be underconstrained if no other camera sees that region. This can lead to weird reconstruction where tiny images are created in front of every camera, theoretically driving the RGB loss to zero but not generalizing to novel views. Ideally the user would place the cameras so that not many rays are created in unconstrained regions or at least that the sphere_init is close enough to the object that we want to reconstruct.
+        lo=torch.clamp(lo, min=0.0)
+
 
         #lo is the distance along the ray to the minimum intersection point
         lo_points=ray_origins+ lo*ray_dirs

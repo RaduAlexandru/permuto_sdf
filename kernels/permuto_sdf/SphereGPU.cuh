@@ -64,6 +64,10 @@ ray_intersection_gpu(
         t1=value_invalid_depth;
     }
 
+    //t0 can end up being negative is the camera if inside the sphere so we clamp it to zero so that t0 is always at least in front of the camera
+    //however making rays starting directly from the camera origin can lead to the regions just in front of the camera to be underconstrained if no other camera sees that region. This can lead to weird reconstruction where tiny images are created in front of every camera, theoretically driving the RGB loss to zero but not generalizing to novel views. Ideally the user would place the cameras so that not many rays are created in unconstrained regions or at least that the sphere_init is close enough to the object that we want to reconstruct.
+    t0=max(0.0f, t0);
+
     float3 point_intersection_t0=ray_origin + t0*ray_dir;
     float3 point_intersection_t1=ray_origin + t1*ray_dir;
 
