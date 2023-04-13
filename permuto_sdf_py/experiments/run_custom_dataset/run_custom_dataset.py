@@ -39,7 +39,7 @@ with_viewer=not args.no_viewer
 
 
 #MODIFY these for your dataset!
-SCENE_SCALE=1.0
+SCENE_SCALE=0.9
 SCENE_TRANSLATION=[0,0,0]
 IMG_SUBSAMPLE_FACTOR=1.0 #subsample the image to lower resolution in case you are running on a low VRAM GPU. The higher this number, the smaller the images
 DATASET_PATH="/media/rosu/Data/data/permuto_sdf_data/easy_pbr_renders/head/" #point this to wherever you downloaded the easypbr_data (see README.md for download link)
