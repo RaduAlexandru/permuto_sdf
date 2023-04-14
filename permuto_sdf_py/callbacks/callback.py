@@ -1,6 +1,7 @@
 #https://github.com/devforfu/pytorch_playground/blob/master/loop.ipynb
 
 import re
+import torch
 
 def to_snake_case(string):
     """Converts CamelCase string into snake_case."""
@@ -85,5 +86,6 @@ class CallbacksGroup(Callback):
     def after_backward_pass(self, **kwargs): self.invoke('after_backward_pass', **kwargs)
     
     def invoke(self, method, **kwargs):
-        for cb in self.callbacks:
-            getattr(cb, method)(**kwargs)
+        with torch.set_grad_enabled(False):
+            for cb in self.callbacks:
+                getattr(cb, method)(**kwargs)

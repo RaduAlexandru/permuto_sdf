@@ -83,7 +83,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor> VolumeRen
 }
 
 
-std::tuple<torch::Tensor, torch::Tensor> VolumeRendering::volume_render_nerf_backward(const torch::Tensor& grad_pred_rgb, const torch::Tensor& grad_bg_transmittance, const torch::Tensor& grad_weight_per_sample, const torch::Tensor pred_rgb, const RaySamplesPacked& ray_samples_packed, const torch::Tensor& rgb_samples, const torch::Tensor& radiance_samples, const torch::Tensor& ray_t_exit, const bool use_ray_t_exit, const torch::Tensor& bg_transmittance){
+std::tuple<torch::Tensor, torch::Tensor> VolumeRendering::volume_render_nerf_backward(const torch::Tensor& grad_pred_rgb, const torch::Tensor& grad_bg_transmittance, const torch::Tensor& grad_weight_per_sample, const torch::Tensor& pred_rgb, const RaySamplesPacked& ray_samples_packed, const torch::Tensor& rgb_samples, const torch::Tensor& radiance_samples, const torch::Tensor& ray_t_exit, const bool use_ray_t_exit, const torch::Tensor& bg_transmittance){
 
 
     CHECK(rgb_samples.dim()==2) << "rgb_samples should have only one dimension correspond to nr_samples x 3. However it has sizes" << rgb_samples.sizes();
@@ -407,7 +407,7 @@ torch::Tensor VolumeRendering::compute_cdf(const RaySamplesPacked& ray_samples_p
 
 }
 
-RaySamplesPacked VolumeRendering::importance_sample(const torch::Tensor ray_origins, const torch::Tensor ray_dirs, const RaySamplesPacked& ray_samples_packed, const torch::Tensor& sample_cdf, const int nr_importance_samples, const bool jitter_samples){
+RaySamplesPacked VolumeRendering::importance_sample(const torch::Tensor& ray_origins, const torch::Tensor& ray_dirs, const RaySamplesPacked& ray_samples_packed, const torch::Tensor& sample_cdf, const int nr_importance_samples, const bool jitter_samples){
 
     int nr_rays=ray_samples_packed.ray_start_end_idx.size(0);
     int nr_samples_total=ray_samples_packed.samples_z.size(0);
@@ -461,7 +461,7 @@ RaySamplesPacked VolumeRendering::importance_sample(const torch::Tensor ray_orig
 }
 
 
-RaySamplesPacked VolumeRendering::combine_uniform_samples_with_imp(const torch::Tensor ray_origins, const torch::Tensor ray_dirs, const torch::Tensor& ray_t_exit, const RaySamplesPacked& ray_samples_packed, const RaySamplesPacked& ray_samples_imp){
+RaySamplesPacked VolumeRendering::combine_uniform_samples_with_imp(const torch::Tensor& ray_origins, const torch::Tensor& ray_dirs, const torch::Tensor& ray_t_exit, const RaySamplesPacked& ray_samples_packed, const RaySamplesPacked& ray_samples_imp){
 
     CHECK(ray_samples_imp.rays_have_equal_nr_of_samples) <<"We are assuming that the importance samples have all an equal nr of samples per ray";
     CHECK(ray_samples_packed.has_sdf==ray_samples_imp.has_sdf) <<"They are supposed to both has or not have sdf";

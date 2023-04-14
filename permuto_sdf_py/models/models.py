@@ -13,6 +13,8 @@ from permuto_sdf_py.utils.common_utils import map_range_val
 from permuto_sdf_py.utils.common_utils import leaky_relu_init
 from permuto_sdf_py.utils.common_utils import apply_weight_init_fn
 from permuto_sdf import PermutoSDF
+from permuto_sdf_py.utils.common_utils import TIME_START
+from permuto_sdf_py.utils.common_utils import TIME_END
 
 import permutohedral_encoding as permuto_enc
 
@@ -90,7 +92,10 @@ class LipshitzMLP(torch.nn.Module):
 
     def normalization(self, w, softplus_ci):
         absrowsum = torch.sum(torch.abs(w), dim=1)
-        scale = torch.minimum(torch.tensor(1.0), softplus_ci/absrowsum)
+        # scale = torch.minimum(torch.tensor(1.0), softplus_ci/absrowsum)
+        # this is faster than the previous line since we don't constantly recreate a torch.tensor(1.0)
+        scale = softplus_ci/absrowsum
+        scale = torch.clamp(scale, max=1.0)
         return w * scale[:,None]
 
     def lipshitz_bound_full(self):

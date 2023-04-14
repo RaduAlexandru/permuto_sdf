@@ -97,13 +97,14 @@ class SingleVarianceNetwork(torch.nn.Module):
         self.register_parameter('variance', torch.nn.Parameter(torch.tensor(init_val)))
         self.is_variance_forced=False
         self.last_variance=None
+        self.tensor_one=torch.tensor(1.0) #so we don't constantly recreate cuda tensors
 
     def forward(self, forced_variance=None):
         # print("neus variance is ", self.variance)
         if forced_variance!=None:
             self.is_variance_forced=True
             self.last_variance=forced_variance
-            return torch.exp(torch.tensor(forced_variance) * 10.0)
+            return torch.exp(self.tensor_one*forced_variance * 10.0)
         else:
             self.last_variance=self.variance
             return torch.exp(self.variance * 10.0) 

@@ -451,7 +451,8 @@ update_with_sdf_random_sample_gpu(
     const float grid_extent,
     const int nr_voxels_per_dim,
     const torch::PackedTensorAccessor32<int,1,torch::RestrictPtrTraits> point_indices,  
-    const float inv_s,
+    // const float inv_s,
+    const torch::PackedTensorAccessor32<float,1,torch::RestrictPtrTraits> inv_s_tensor,
     const float occupancy_thresh,
     //output
     torch::PackedTensorAccessor32<float,1,torch::RestrictPtrTraits> grid_values_tensor,
@@ -497,6 +498,7 @@ update_with_sdf_random_sample_gpu(
     float minimum_sdf_possible_in_voxel=fabs(updated_sdf)-sdf_error_range;
     float capped_minimum_sdf_possible_in_voxel=clamp(minimum_sdf_possible_in_voxel,0.0, 1e10);
     //pass this sdf through the logistic function that neus uses and check what density it gets
+    float inv_s=inv_s_tensor[0];
     float weight=logistic_density_distribution(capped_minimum_sdf_possible_in_voxel, inv_s);
 
 

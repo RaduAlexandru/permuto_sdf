@@ -148,7 +148,7 @@ std::tuple<torch::Tensor,torch::Tensor> OccupancyGrid::compute_random_sample_of_
 
 
 
-RaySamplesPacked OccupancyGrid::compute_samples_in_occupied_regions(const torch::Tensor ray_origins, const torch::Tensor ray_dirs, const torch::Tensor ray_t_entry, const torch::Tensor ray_t_exit, const float min_dist_between_samples, const int max_nr_samples_per_ray, const bool jitter_samples){
+RaySamplesPacked OccupancyGrid::compute_samples_in_occupied_regions(const torch::Tensor& ray_origins, const torch::Tensor& ray_dirs, const torch::Tensor& ray_t_entry, const torch::Tensor& ray_t_exit, const float min_dist_between_samples, const int max_nr_samples_per_ray, const bool jitter_samples){
     int nr_rays=ray_origins.size(0);
     // VLOG(1) << "nr rays " << nr_rays;
 
@@ -195,7 +195,7 @@ RaySamplesPacked OccupancyGrid::compute_samples_in_occupied_regions(const torch:
     return ray_samples_packed;
 }
 
-RaySamplesPacked OccupancyGrid::compute_first_sample_start_of_occupied_regions(const torch::Tensor ray_origins, const torch::Tensor ray_dirs, const torch::Tensor ray_t_entry, const torch::Tensor ray_t_exit){
+RaySamplesPacked OccupancyGrid::compute_first_sample_start_of_occupied_regions(const torch::Tensor& ray_origins, const torch::Tensor& ray_dirs, const torch::Tensor& ray_t_entry, const torch::Tensor& ray_t_exit){
     int nr_rays=ray_origins.size(0);
     // VLOG(1) << "nr rays " << nr_rays;
 
@@ -238,7 +238,7 @@ RaySamplesPacked OccupancyGrid::compute_first_sample_start_of_occupied_regions(c
     return ray_samples_packed;
 }
 
-std::tuple<torch::Tensor,torch::Tensor> OccupancyGrid::advance_sample_to_next_occupied_voxel(const torch::Tensor samples_dirs, const torch::Tensor samples_pos){
+std::tuple<torch::Tensor,torch::Tensor> OccupancyGrid::advance_sample_to_next_occupied_voxel(const torch::Tensor& samples_dirs, const torch::Tensor& samples_pos){
 
     int nr_points=samples_pos.size(0);
 
@@ -304,7 +304,7 @@ torch::Tensor OccupancyGrid::check_occupancy(const torch::Tensor& points){
 }
 
 
-void OccupancyGrid::update_with_density(const torch::Tensor density, const float decay, const float occupancy_tresh){
+void OccupancyGrid::update_with_density(const torch::Tensor& density, const float decay, const float occupancy_tresh){
     
     CHECK(density.dim()==2) << "density should have dim 2 correspondin to nr_pointsx1. However it has sizes" << density.sizes();
     CHECK(decay<1.0) <<"We except the decay to be <1.0 but it is " << decay;
@@ -330,7 +330,7 @@ void OccupancyGrid::update_with_density(const torch::Tensor density, const float
 
 }
 
-void OccupancyGrid::update_with_density_random_sample(const torch::Tensor point_indices, const torch::Tensor density, const float decay, const float occupancy_tresh){
+void OccupancyGrid::update_with_density_random_sample(const torch::Tensor& point_indices, const torch::Tensor& density, const float decay, const float occupancy_tresh){
 
     CHECK(density.dim()==2) << "density should have dim 2 correspondin to nr_pointsx1. However it has sizes" << density.sizes();
     CHECK(decay<1.0) <<"We except the decay to be <1.0 but it is " << decay;
@@ -358,7 +358,7 @@ void OccupancyGrid::update_with_density_random_sample(const torch::Tensor point_
 
 }
 
-void OccupancyGrid::update_with_sdf(const torch::Tensor sdf, const float inv_s, const float max_eikonal_abs, const float occupancy_thresh){
+void OccupancyGrid::update_with_sdf(const torch::Tensor& sdf, const float inv_s, const float max_eikonal_abs, const float occupancy_thresh){
 
     CHECK(sdf.dim()==2) << "density should have dim 2 correspondin to nr_pointsx1. However it has sizes" << sdf.sizes();
     // CHECK(decay<1.0) <<"We except the decay to be <1.0 but it is " << decay;
@@ -383,11 +383,13 @@ void OccupancyGrid::update_with_sdf(const torch::Tensor sdf, const float inv_s, 
 
 }
 
-void OccupancyGrid::update_with_sdf_random_sample(const torch::Tensor point_indices, const torch::Tensor sdf, const float inv_s, const float occupancy_thresh){
+// void OccupancyGrid::update_with_sdf_random_sample(const torch::Tensor& point_indices, const torch::Tensor& sdf, const float inv_s, const float occupancy_thresh){
+void OccupancyGrid::update_with_sdf_random_sample(const torch::Tensor& point_indices, const torch::Tensor& sdf, const torch::Tensor& inv_s, const float occupancy_thresh){
 
     CHECK(sdf.dim()==2) << "density should have dim 2 correspondin to nr_pointsx1. However it has sizes" << sdf.sizes();
     // CHECK(decay<1.0) <<"We except the decay to be <1.0 but it is " << decay;
     CHECK(point_indices.dim()==1) << "point_indices should have dim 1 correspondin to nr_points. However it has sizes" << point_indices.sizes();
+    CHECK(inv_s.size(0)==1 && inv_s.dim()==1) << "Inv_s should be a tensor of 1 but it has sizes: " << inv_s.sizes();
 
 
     int nr_points=point_indices.size(0);
@@ -402,7 +404,8 @@ void OccupancyGrid::update_with_sdf_random_sample(const torch::Tensor point_indi
                 m_grid_extent,
                 m_nr_voxels_per_dim,
                 point_indices.packed_accessor32<int,1,torch::RestrictPtrTraits>(),
-                inv_s,
+                // inv_s,
+                inv_s.packed_accessor32<float,1,torch::RestrictPtrTraits>(),
                 occupancy_thresh,
                 m_grid_values.packed_accessor32<float,1,torch::RestrictPtrTraits>(),
                 m_grid_occupancy.packed_accessor32<bool,1,torch::RestrictPtrTraits>()

@@ -355,7 +355,6 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
 
 
             #curvature loss
-            loss_curvature=torch.tensor(0)
             global_weight_curvature=map_range_val(iter_nr_for_anneal, hyperparams.iter_start_reduce_curv, hyperparams.iter_finish_reduce_curv, 1.0, 0.000) #once we are converged onto good geometry we can safely descrease it's weight so we learn also high frequency detail geometry.
             if global_weight_curvature>0.0:
             # if True:
@@ -389,7 +388,8 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
                 if phase.iter_nr%8==0 and hyperparams.use_occupancy_grid:
                     grid_centers_random, grid_center_indices=occupancy_grid.compute_random_sample_of_grid_points(256*256*4,True)
                     sdf_grid,_=model_sdf( grid_centers_random, iter_nr_for_anneal) 
-                    occupancy_grid.update_with_sdf_random_sample(grid_center_indices, sdf_grid, model_rgb.volume_renderer_neus.get_last_inv_s().item(), 1e-4 )
+                    occupancy_grid.update_with_sdf_random_sample(grid_center_indices, sdf_grid, model_rgb.volume_renderer_neus.get_last_inv_s(), 1e-4 )
+                    # occupancy_grid.update_with_sdf_random_sample(grid_center_indices, sdf_grid, model_rgb.volume_renderer_neus.get_last_inv_s().item(), 1e-4 )
 
                 #adjust nr_rays_to_create based on how many samples we have in total
                 cur_nr_samples=fg_ray_samples_packed.samples_pos.shape[0]
@@ -404,8 +404,8 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
                         #decrease eik_w as it seems to also slightly help with getting more detail on the surface
                         hyperparams.eikonal_weight=0.01
 
-
-        cb.after_forward_pass(loss=loss.item(), loss_rgb=loss_rgb, loss_sdf_surface_area=0, loss_sdf_grad=0, phase=phase, loss_eikonal=loss_eikonal.item(), loss_curvature=loss_curvature.item(), loss_lipshitz=loss_lipshitz.item(), lr=optimizer.param_groups[0]["lr"]) #visualizes the prediction 
+        # cb.after_forward_pass(loss=loss.item(), loss_rgb=loss_rgb, loss_sdf_surface_area=0, loss_sdf_grad=0, phase=phase, loss_eikonal=loss_eikonal.item(), loss_curvature=loss_curvature.item(), loss_lipshitz=loss_lipshitz.item(), lr=optimizer.param_groups[0]["lr"]) #visualizes the prediction 
+        cb.after_forward_pass(loss=loss, loss_rgb=loss_rgb, phase=phase, loss_eikonal=loss_eikonal, loss_curvature=loss_curvature, loss_lipshitz=loss_lipshitz, lr=optimizer.param_groups[0]["lr"]) #visualizes the prediction 
 
 
         #backward

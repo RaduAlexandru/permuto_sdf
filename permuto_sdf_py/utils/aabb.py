@@ -9,14 +9,7 @@ class AABB:
     def __init__(self, bounding_box_sizes_xyz, bounding_box_translation):
         self.bounding_box_sizes_xyz = bounding_box_sizes_xyz
         self.bounding_box_translation = bounding_box_translation
-
-    #given points of size Nx3 return a tensor of Nx1 if the points are inside the primitive
-    def check_point_inside_primitive(self, points):
-        # X_min <= X <= X_max and Y_min <= Y <= Y_max  and Z_min <= Z <= Z_max
-        # points=points.view(-1,3)
-
-        #put it at the origin of the box
-        points=points-torch.as_tensor(self.bounding_box_translation)
+        self.invalid_depth_val=torch.tensor([[0.0]])
 
         #x
         xmin=-self.bounding_box_sizes_xyz[0]/2
@@ -28,13 +21,20 @@ class AABB:
         zmin=-self.bounding_box_sizes_xyz[2]/2
         zmax=self.bounding_box_sizes_xyz[2]/2
 
-        max_bounds=torch.tensor([xmax, ymax, zmax])
-        min_bounds=torch.tensor([xmin, ymin, zmin])
+        self.max_bounds=torch.tensor([xmax, ymax, zmax])
+        self.min_bounds=torch.tensor([xmin, ymin, zmin])
 
-        # print("max_bounds",max_bounds)
+    #given points of size Nx3 return a tensor of Nx1 if the points are inside the primitive
+    def check_point_inside_primitive(self, points):
+        # X_min <= X <= X_max and Y_min <= Y <= Y_max  and Z_min <= Z <= Z_max
+        # points=points.view(-1,3)
 
-        is_valid_max=points<max_bounds
-        is_valid_min=points>min_bounds
+        #put it at the origin of the box
+        points=points-torch.as_tensor(self.bounding_box_translation)
+
+
+        is_valid_max=points<self.max_bounds
+        is_valid_min=points>self.min_bounds
         is_valid_min_max=torch.logical_and(is_valid_max, is_valid_min) #nx3 true if each coordinate is within the bound
         is_valid_points=  (is_valid_min_max*1.0).sum(dim=-1, keepdim=True) ==3 #set the points to true (valid) if all three coordinates are valid
 
@@ -53,7 +53,7 @@ class AABB:
         lo= - torch.ones_like( ray_origins[:,0:1]) * HUGE_NUMBER
         hi=torch.ones_like( ray_origins[:,0:1]) * HUGE_NUMBER
         invalid_hit_all_dimensions=torch.zeros_like( ray_origins[:,0:1]).bool() #all false
-        value_invalid_depth=torch.tensor([[0.0]])
+        value_invalid_depth=self.invalid_depth_val
 
 
 
