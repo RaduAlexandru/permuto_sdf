@@ -407,24 +407,26 @@ torch::Tensor VolumeRendering::compute_cdf(const RaySamplesPacked& ray_samples_p
 
 }
 
-RaySamplesPacked VolumeRendering::importance_sample(const torch::Tensor& ray_origins, const torch::Tensor& ray_dirs, const RaySamplesPacked& ray_samples_packed, const torch::Tensor& sample_cdf, const int nr_importance_samples, const bool jitter_samples){
+RaySamplesPacked VolumeRendering::importance_sample(const int nr_rays_valid, const torch::Tensor& ray_origins, const torch::Tensor& ray_dirs, const RaySamplesPacked& ray_samples_packed, const torch::Tensor& sample_cdf, const int nr_importance_samples, const bool jitter_samples){
 
     int nr_rays=ray_samples_packed.ray_start_end_idx.size(0);
     int nr_samples_total=ray_samples_packed.samples_z.size(0);
     CHECK(sample_cdf.size(0)==nr_samples_total) <<"CDF should have size of nr_samples_total x 1. but it has " << sample_cdf.sizes();
     CHECK(sample_cdf.size(1)==1) <<"CDF should ahve only 1 value per sample " << sample_cdf.sizes();
 
-    int nr_samples_imp_maximum=nr_rays*nr_importance_samples; 
+    int nr_samples_imp_maximum=nr_rays_valid*nr_importance_samples; 
     RaySamplesPacked ray_samples_imp(nr_rays, nr_samples_imp_maximum);
-    ray_samples_imp.rays_have_equal_nr_of_samples=true;
-    ray_samples_imp.fixed_nr_of_samples_per_ray=nr_importance_samples;
+    //the importance samples will not have equal nr of samples for each ray because some rays are not valid (they traverse only empty space) and therefore they don't get any samples
+    // ray_samples_imp.rays_have_equal_nr_of_samples=true;
+    // ray_samples_imp.fixed_nr_of_samples_per_ray=nr_importance_samples;
+    ray_samples_imp.is_compact=true;
 
     //fill the samples
     const dim3 blocks = { (unsigned int)div_round_up(nr_rays, BLOCK_SIZE), 1, 1 }; 
 
 
 
-    VolumeRenderingGPU::importance_sample_gpu<<<blocks, BLOCK_SIZE>>>(
+    VolumeRenderingGPU::importance_sample_gpu<<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
                 nr_rays,
                 ray_origins.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
                 ray_dirs.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
@@ -439,23 +441,27 @@ RaySamplesPacked VolumeRendering::importance_sample(const torch::Tensor& ray_ori
                 nr_importance_samples,
                 m_rng,
                 jitter_samples,
+                ray_samples_imp.max_nr_samples,
                 //output
                 // samples_cdf.packed_accessor32<float,2,torch::RestrictPtrTraits>()
                 ray_samples_imp.samples_pos.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
                 ray_samples_imp.samples_dirs.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
                 ray_samples_imp.samples_z.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
                 // ray_samples_imp.samples_dt.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
-                // ray_samples_imp.ray_fixed_dt.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
-                ray_samples_imp.ray_start_end_idx.packed_accessor32<int,2,torch::RestrictPtrTraits>()
-                // ray_samples_imp.cur_nr_samples.packed_accessor32<int,1,torch::RestrictPtrTraits>()
+                ray_samples_imp.ray_fixed_dt.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
+                ray_samples_imp.ray_start_end_idx.packed_accessor32<int,2,torch::RestrictPtrTraits>(),
+                ray_samples_imp.cur_nr_samples.packed_accessor32<int,1,torch::RestrictPtrTraits>()
             );
     
     if(jitter_samples){
         m_rng.advance();
     }
 
+    // int nr_imp_samples_created=ray_samples_imp.cur_nr_samples.item<int>();
+    // CHECK(nr_imp_samples_created==nr_samples_imp_maximum) << "For some reason not all importance samples were created. nr_imp_samples_created is " << nr_imp_samples_created << " maximum is " << nr_samples_imp_maximum;
 
-    return ray_samples_imp;
+
+    return ray_samples_imp; 
 
 
 }
@@ -463,18 +469,21 @@ RaySamplesPacked VolumeRendering::importance_sample(const torch::Tensor& ray_ori
 
 RaySamplesPacked VolumeRendering::combine_uniform_samples_with_imp(const torch::Tensor& ray_origins, const torch::Tensor& ray_dirs, const torch::Tensor& ray_t_exit, const RaySamplesPacked& ray_samples_packed, const RaySamplesPacked& ray_samples_imp){
 
-    CHECK(ray_samples_imp.rays_have_equal_nr_of_samples) <<"We are assuming that the importance samples have all an equal nr of samples per ray";
+    // CHECK(ray_samples_imp.rays_have_equal_nr_of_samples) <<"We are assuming that the importance samples have all an equal nr of samples per ray";
     CHECK(ray_samples_packed.has_sdf==ray_samples_imp.has_sdf) <<"They are supposed to both has or not have sdf";
+    CHECK(ray_samples_imp.is_compact) << "We assume that the importance samples are compact. Please call compact_to_valid_samples()";
+    CHECK(ray_samples_packed.is_compact) << "We assume that the uniform_samples are compact. Please call compact_to_valid_samples()";
 
 
     int nr_rays=ray_samples_packed.ray_start_end_idx.size(0);
     int nr_samples_uniform_total=ray_samples_packed.samples_z.size(0);
     int nr_samples_imp_total=ray_samples_imp.max_nr_samples;
-    CHECK(nr_rays*ray_samples_imp.fixed_nr_of_samples_per_ray == nr_samples_imp_total) <<"This should be equal";
+    // CHECK(nr_rays*ray_samples_imp.fixed_nr_of_samples_per_ray == nr_samples_imp_total) <<"This should be equal";
 
     int nr_samples_combined_maximum=nr_samples_uniform_total+nr_samples_imp_total; 
     RaySamplesPacked ray_samples_combined(nr_rays, nr_samples_combined_maximum);
     ray_samples_combined.has_sdf=ray_samples_packed.has_sdf;
+    ray_samples_combined.is_compact=true; //if both inputs are compact this one should eb compact also
 
     //fill the samples
     const dim3 blocks = { (unsigned int)div_round_up(nr_rays, BLOCK_SIZE), 1, 1 }; 

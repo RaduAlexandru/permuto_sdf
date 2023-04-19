@@ -152,8 +152,9 @@ RaySamplesPacked OccupancyGrid::compute_samples_in_occupied_regions(const torch:
     int nr_rays=ray_origins.size(0);
     // VLOG(1) << "nr rays " << nr_rays;
 
-    int nr_samples_maximum=1024*1024*2; //we assume a maximum nr of rays and maximum of samples per ray
+    int nr_samples_maximum=nr_rays*max_nr_samples_per_ray; //we assume a maximum nr of rays and maximum of samples per ray
     RaySamplesPacked ray_samples_packed(nr_rays, nr_samples_maximum);
+    ray_samples_packed.is_compact=false;
 
 
     //fill the samples
@@ -199,8 +200,9 @@ RaySamplesPacked OccupancyGrid::compute_first_sample_start_of_occupied_regions(c
     int nr_rays=ray_origins.size(0);
     // VLOG(1) << "nr rays " << nr_rays;
 
-    int nr_samples_maximum=1024*1024*2; //we assume a maximum nr of rays and maximum of samples per ray
+    int nr_samples_maximum=nr_rays*1; //we assume a maximum nr of rays and maximum of samples per ray
     RaySamplesPacked ray_samples_packed(nr_rays, nr_samples_maximum);
+    ray_samples_packed.is_compact=false; //may generate non compact things not all rays may end up hitting an occupied region. If a ray doesn't hit any occupied region along it's trajectory then no samples are created there
 
 
     //fill the samples

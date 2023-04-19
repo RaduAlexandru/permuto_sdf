@@ -380,10 +380,14 @@ def extract_mesh_from_density_model(model, lattice, nr_points_per_dim, min_val, 
 	return extracted_mesh
 
 
-def importance_sampling_sdf_model(model_sdf, ray_samples_packed, ray_origins, ray_dirs, ray_t_exit, iter_nr_for_anneal):
+def importance_sampling_sdf_model(model_sdf, ray_samples_packed, nr_rays_valid, ray_origins, ray_dirs, ray_t_exit, iter_nr_for_anneal):
+	assert ray_samples_packed.is_compact, "ray_samples_packed has to be compacted. Please call compact_to_valid_samples() on it"
+
 	#importance sampling for the SDF model
 	inv_s_imp_sampling=512
 	inv_s_multiplier=1.0
+
+	nr_samples_uniform=ray_samples_packed.samples_pos.shape[0]
 	#
 	sdf_sampled_packed, _=model_sdf(ray_samples_packed.samples_pos, iter_nr_for_anneal)
 	ray_samples_packed.set_sdf(sdf_sampled_packed) ##set sdf
@@ -397,12 +401,16 @@ def importance_sampling_sdf_model(model_sdf, ray_samples_packed, ray_origins, ra
 	weights/=weight_sum_per_sample #normalize so that cdf sums up to 1
 	cdf=VolumeRendering.compute_cdf(ray_samples_packed, weights)
 	# print("cdf min max is ", cdf.min(), cdf.max())
-	ray_samples_packed_imp=VolumeRendering.importance_sample(ray_origins, ray_dirs, ray_samples_packed, cdf, 16, model_sdf.training)
+	# ray_samples_packed_imp=VolumeRendering.importance_sample(ray_origins, ray_dirs, ray_samples_packed, cdf, 16, model_sdf.training)
+	ray_samples_packed_imp=VolumeRendering.importance_sample(nr_rays_valid, ray_origins, ray_dirs, ray_samples_packed, cdf, 16, model_sdf.training)
 	sdf_sampled_packed_imp, _, =model_sdf(ray_samples_packed_imp.samples_pos, iter_nr_for_anneal)
 	ray_samples_packed_imp.set_sdf(sdf_sampled_packed_imp) ##set sdf
 	ray_samples_combined=VolumeRendering.combine_uniform_samples_with_imp(ray_origins, ray_dirs, ray_t_exit, ray_samples_packed, ray_samples_packed_imp)
 	ray_samples_packed=ray_samples_combined#swap
-	ray_samples_packed=ray_samples_packed.compact_to_valid_samples() #still need to get the valid ones because we have less samples than allocated
+	# ray_samples_packed=ray_samples_packed.compact_to_valid_samples() #still need to get the valid ones because we have less samples than allocated
+	#compact with known samples 
+	nr_samples_after_compaction=nr_samples_uniform+nr_rays_valid*16
+	ray_samples_packed=ray_samples_packed.compact_given_exact_nr_samples(nr_samples_after_compaction)
 	####SECOND ITER
 	inv_s_multiplier=2.0
 	sdf_sampled_packed=ray_samples_packed.samples_sdf #we already combined them and have the sdf
@@ -414,11 +422,15 @@ def importance_sampling_sdf_model(model_sdf, ray_samples_packed, ray_origins, ra
 	weight_sum_per_sample=torch.clamp(weight_sum_per_sample, min=1e-6 )
 	weights/=weight_sum_per_sample #normalize so that cdf sums up to 1
 	cdf=VolumeRendering.compute_cdf(ray_samples_packed, weights)
-	ray_samples_packed_imp=VolumeRendering.importance_sample(ray_origins, ray_dirs, ray_samples_packed, cdf, 16, model_sdf.training)
+	# ray_samples_packed_imp=VolumeRendering.importance_sample(ray_origins, ray_dirs, ray_samples_packed, cdf, 16, model_sdf.training)
+	ray_samples_packed_imp=VolumeRendering.importance_sample(nr_rays_valid, ray_origins, ray_dirs, ray_samples_packed, cdf, 16, model_sdf.training)
 	ray_samples_packed.remove_sdf() #we fuse this with ray_samples_packed_imp but we don't care about fusing the sdf
 	ray_samples_combined=VolumeRendering.combine_uniform_samples_with_imp(ray_origins, ray_dirs, ray_t_exit, ray_samples_packed, ray_samples_packed_imp)
 	ray_samples_packed=ray_samples_combined#swap
-	ray_samples_packed=ray_samples_packed.compact_to_valid_samples() #still need to get the valid ones because we have less samples than allocated
+	# ray_samples_packed=ray_samples_packed.compact_to_valid_samples() #still need to get the valid ones because we have less samples than allocated
+	#compact with known samples 
+	nr_samples_after_compaction=nr_samples_uniform+nr_rays_valid*16*2
+	ray_samples_packed=ray_samples_packed.compact_given_exact_nr_samples(nr_samples_after_compaction)
 
 	return ray_samples_packed
 

@@ -28,7 +28,7 @@ public:
     static std::tuple<torch::Tensor, torch::Tensor> sum_over_each_ray(const RaySamplesPacked& ray_samples_packed, const torch::Tensor& sample_values); //sums some tensor that contains some values per sample into a quantity that is per_ray
     static torch::Tensor cumsum_over_each_ray(const RaySamplesPacked& ray_samples_packed, const torch::Tensor& sample_values, const bool inverse); //cumsums some tensor that contains some values per sample into a quantity that is per_ray. If its ivnerse we sum in inverse order so that the first element of the ray has the sum of all the other elements plus itself. The default is that the end of the ray has the sum of all the other elements plus itself
     static torch::Tensor compute_cdf(const RaySamplesPacked& ray_samples_packed, const torch::Tensor& sample_weights);
-    static RaySamplesPacked importance_sample(const torch::Tensor& ray_origins, const torch::Tensor& ray_dirs, const RaySamplesPacked& ray_samples_packed, const torch::Tensor& sample_cdf, const int nr_importance_samples, const bool jitter_samples);
+    static RaySamplesPacked importance_sample(const int nr_rays_valid, const torch::Tensor& ray_origins, const torch::Tensor& ray_dirs, const RaySamplesPacked& ray_samples_packed, const torch::Tensor& sample_cdf, const int nr_importance_samples, const bool jitter_samples);
     static RaySamplesPacked combine_uniform_samples_with_imp(const torch::Tensor& ray_origins, const torch::Tensor& ray_dirs, const torch::Tensor& ray_t_exit, const RaySamplesPacked& ray_samples_packed, const RaySamplesPacked& ray_samples_imp);
 
     //backward passes

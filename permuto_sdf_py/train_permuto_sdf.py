@@ -101,7 +101,7 @@ class HyperParamsPermutoSDF:
     sdf_nr_iters_for_c2f=10000*s_mult
     rgb_nr_iters_for_c2f=1
     background_nr_iters_for_c2f=1
-    target_nr_of_samples=512*(64+16+16)             #the nr of rays are dynamically changed so that we use this nr of samples in a forward pass. you can reduce this for faster training or if your GPU has little VRAM
+    target_nr_of_samples=nr_rays*(64+16+16)             #the nr of rays are dynamically changed so that we use this nr of samples in a forward pass. you can reduce this for faster training or if your GPU has little VRAM
 hyperparams=HyperParamsPermutoSDF()
 
 
@@ -113,9 +113,11 @@ def run_net(args, hyperparams, ray_origins, ray_dirs, img_indices, model_sdf, mo
         ray_points_entry, ray_t_entry, ray_points_exit, ray_t_exit, does_ray_intersect_box=model_sdf.boundary_primitive.ray_intersection(ray_origins, ray_dirs)
         TIME_START("create_samples")
         fg_ray_samples_packed, bg_ray_samples_packed = create_samples(args, hyperparams, ray_origins, ray_dirs, model_sdf.training, occupancy_grid, model_sdf.boundary_primitive)
+
         
         if hyperparams.do_importance_sampling and fg_ray_samples_packed.samples_pos.shape[0]!=0:
-            fg_ray_samples_packed=importance_sampling_sdf_model(model_sdf, fg_ray_samples_packed, ray_origins, ray_dirs, ray_t_exit, iter_nr_for_anneal)
+            nr_rays_valid=fg_ray_samples_packed.compute_exact_nr_rays_valid_cpu() #will block
+            fg_ray_samples_packed=importance_sampling_sdf_model(model_sdf, fg_ray_samples_packed, nr_rays_valid, ray_origins, ray_dirs, ray_t_exit, iter_nr_for_anneal)
         TIME_END("create_samples") #4ms in PermutoSDF
 
     # print("fg_ray_samples_packed.samples_pos.shape",fg_ray_samples_packed.samples_pos.shape)

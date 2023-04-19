@@ -46,6 +46,7 @@ RaySamplesPacked RaySampler::compute_samples_bg(const torch::Tensor& ray_origins
     RaySamplesPacked ray_samples_packed(nr_rays, nr_samples_maximum);
     ray_samples_packed.rays_have_equal_nr_of_samples=true;
     ray_samples_packed.fixed_nr_of_samples_per_ray=nr_samples_per_ray;
+    ray_samples_packed.is_compact=true;
 
     //view them a bit different because it's easier to fill them
     ray_samples_packed.samples_z = ray_samples_packed.samples_z.view({ nr_rays, nr_samples_per_ray });
@@ -112,6 +113,7 @@ RaySamplesPacked RaySampler::compute_samples_fg(const torch::Tensor& ray_origins
 
     int nr_samples_maximum=nr_rays*max_nr_samples_per_ray;
     RaySamplesPacked ray_samples_packed(nr_rays, nr_samples_maximum);
+    ray_samples_packed.is_compact=false; //may generate non compact things because of the randomize_positions
 
 
     const dim3 blocks = { (unsigned int)div_round_up(nr_rays, BLOCK_SIZE), 1, 1 }; 

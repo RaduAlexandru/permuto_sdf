@@ -805,11 +805,14 @@ importance_sample_gpu(
     const int nr_importance_samples,
     pcg32 rng,
     const bool jitter_samples,
+    const int max_nr_samples_imp,
     //output
     torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> out_samples_pos,
     torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> out_samples_dirs,
     torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> out_samples_z,
-    torch::PackedTensorAccessor32<int,2,torch::RestrictPtrTraits> out_ray_start_end_idx
+    torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> out_ray_fixed_dt,
+    torch::PackedTensorAccessor32<int,2,torch::RestrictPtrTraits> out_ray_start_end_idx,
+    torch::PackedTensorAccessor32<int,1,torch::RestrictPtrTraits> cur_nr_samples
     ) {
 
     int idx = blockIdx.x * blockDim.x + threadIdx.x; //each thread will deal with a new value
@@ -826,11 +829,11 @@ importance_sample_gpu(
     int nr_samples=0;
     get_start_end_ray_indices(nr_samples, idx_start, idx_end, idx, rays_have_equal_nr_of_samples, fixed_nr_of_samples_per_ray, ray_start_end_idx  );
 
-    //get the indices where we should write the importance samples
-    int imp_idx_start=0;
-    int imp_idx_end=0;
-    int imp_nr_samples=0;
-    get_start_end_ray_indices(imp_nr_samples, imp_idx_start, imp_idx_end, idx, true, nr_importance_samples, out_ray_start_end_idx  );
+    // //get the indices where we should write the importance samples
+    // int imp_idx_start=0;
+    // int imp_idx_end=0;
+    // int imp_nr_samples=0;
+    // get_start_end_ray_indices(imp_nr_samples, imp_idx_start, imp_idx_end, idx, true, nr_importance_samples, out_ray_start_end_idx  );
 
     //preload some other stuff
     float3 ray_origin=make_float3(ray_origins[idx][0], ray_origins[idx][1], ray_origins[idx][2]);
@@ -844,21 +847,36 @@ importance_sample_gpu(
     // if (false){ //this batch of samples would have ended up outside of the maximum allocation of samples but we didn't actually write any samples
 
         //some rays can have no sample sbecause they end up in empty space but since we are assuming we have a dense vector of nr_raysx16 of importance samples, we set the importance samples to 0
-            for (int i=0; i<nr_importance_samples; i++) { 
-            //write the DUMMY sample
-            //pos
-            out_samples_pos[imp_idx_start+i][0]=0;
-            out_samples_pos[imp_idx_start+i][1]=0;
-            out_samples_pos[imp_idx_start+i][2]=0;
-            //dir
-            out_samples_dirs[imp_idx_start+i][0]=0;
-            out_samples_dirs[imp_idx_start+i][1]=0;
-            out_samples_dirs[imp_idx_start+i][2]=0;
-            //z
-            out_samples_z[imp_idx_start+i][0]=-1;
-        }
+        //     for (int i=0; i<nr_importance_samples; i++) { 
+        //     //write the DUMMY sample
+        //     //pos
+        //     out_samples_pos[imp_idx_start+i][0]=0;
+        //     out_samples_pos[imp_idx_start+i][1]=0;
+        //     out_samples_pos[imp_idx_start+i][2]=0;
+        //     //dir
+        //     out_samples_dirs[imp_idx_start+i][0]=0;
+        //     out_samples_dirs[imp_idx_start+i][1]=0;
+        //     out_samples_dirs[imp_idx_start+i][2]=0;
+        //     //z
+        //     out_samples_z[imp_idx_start+i][0]=-1;
+        // }
+
+        //nothing to write because this rays is not valid (it only passes through empty space)
+        out_ray_fixed_dt[idx][0]=0;
+        out_ray_start_end_idx[idx][0]=0;
+        out_ray_start_end_idx[idx][1]=0;
 
     }else{
+
+        //we found valid ray so we write 16 samples for it
+        int imp_idx_start=atomicAdd(&cur_nr_samples[0],nr_importance_samples);
+        out_ray_start_end_idx[idx][0]=imp_idx_start;
+        out_ray_start_end_idx[idx][1]=imp_idx_start+nr_importance_samples; 
+
+        if( (imp_idx_start+nr_importance_samples)>max_nr_samples_imp){
+            printf("importance_sample: this really shouldn't happen that we are writing more samples than the max_samples_imp. How did that happen \n");
+            return;
+        }
 
 
         for (int i=0; i<nr_importance_samples; i++) {
@@ -1003,7 +1021,7 @@ combine_uniform_samples_with_imp_gpu(
     int imp_idx_start=0;
     int imp_idx_end=0;
     int imp_nr_samples=0;
-    get_start_end_ray_indices(imp_nr_samples, imp_idx_start, imp_idx_end, idx, true, imp_fixed_nr_of_samples_per_ray, imp_ray_start_end_idx  );
+    get_start_end_ray_indices(imp_nr_samples, imp_idx_start, imp_idx_end, idx, imp_rays_have_equal_nr_of_samples, imp_fixed_nr_of_samples_per_ray, imp_ray_start_end_idx  );
 
     //preload some other stuff
     float3 ray_origin=make_float3(ray_origins[idx][0], ray_origins[idx][1], ray_origins[idx][2]);
@@ -1013,14 +1031,14 @@ combine_uniform_samples_with_imp_gpu(
     //caulcate how many samples we need for this ray
     int combined_nr_samples=uniform_nr_samples+imp_nr_samples;
 
-    //too low nr of samples
-    if(uniform_nr_samples<=1){
-        //we set the ray quantities to 0 and there is nothing to set in the per_sample quantities because we have no samples
-        combined_ray_fixed_dt[idx][0]=0;
-        combined_ray_start_end_idx[idx][0]=0;
-        combined_ray_start_end_idx[idx][1]=0;
-        return;
-    }
+    // //too low nr of samples
+    // if(uniform_nr_samples<=1){
+    //     //we set the ray quantities to 0 and there is nothing to set in the per_sample quantities because we have no samples
+    //     combined_ray_fixed_dt[idx][0]=0;
+    //     combined_ray_start_end_idx[idx][0]=0;
+    //     combined_ray_start_end_idx[idx][1]=0;
+    //     return;
+    // }
     
     //allocate similar to how we do in the occupancy grid
     int combined_indx_start_sample=atomicAdd(&combined_cur_nr_samples[0],combined_nr_samples);
