@@ -499,29 +499,47 @@ def create_rays_from_frame(frame, rand_indices):
 
 	return ray_origins, ray_dirs
 
-def create_samples(args, hyperparams, ray_origins, ray_dirs, jitter_samples, occupancy_grid, bounding_primitive):
+def create_samples(args, hyperparams, ray_origins, ray_dirs, jitter_samples, occupancy_grid, bounding_primitive, compact_samples=True):
+	
+	fg_ray_samples_packed = create_samples_fg(args, hyperparams, ray_origins, ray_dirs, jitter_samples, occupancy_grid, bounding_primitive, compact_samples)
+
+	bg_ray_samples_packed = create_samples_bg(args, hyperparams, ray_origins, ray_dirs, jitter_samples, occupancy_grid, bounding_primitive)
+
+	return fg_ray_samples_packed, bg_ray_samples_packed
+
+
+def create_samples_fg(args, hyperparams, ray_origins, ray_dirs, jitter_samples, occupancy_grid, bounding_primitive, compact_samples=True):
 	ray_points_entry, ray_t_entry, ray_points_exit, ray_t_exit, does_ray_intersect_box=bounding_primitive.ray_intersection(ray_origins, ray_dirs)
 
 	#foreground samples
 	if hyperparams.use_occupancy_grid and occupancy_grid is not None:
 		fg_ray_samples_packed=occupancy_grid.compute_samples_in_occupied_regions(ray_origins, ray_dirs, ray_t_entry, ray_t_exit, hyperparams.min_dist_between_samples, hyperparams.max_nr_samples_per_ray, jitter_samples)
-		fg_ray_samples_packed=fg_ray_samples_packed.compact_to_valid_samples()
 
-		
-
+		#incurrs a GPU to CPU sync point if it's done right after compute_samples_in_occupied_regions(). Ideally you would stagger these so that the kernel for compute_samples_in_occupied_regions() has likely finished running before you compact the samples. Compacting requires finishing the compute_samples_in_occupied_regions() kernel because it needs to read the actual nr of samples created from CPU and this requires a wait. 	
+		if compact_samples:
+			fg_ray_samples_packed=fg_ray_samples_packed.compact_to_valid_samples()
 
 	else:
 	
 		fg_ray_samples_packed= RaySampler.compute_samples_fg(ray_origins, ray_dirs, ray_t_entry, ray_t_exit, hyperparams.min_dist_between_samples, hyperparams.max_nr_samples_per_ray, bounding_primitive.m_radius, bounding_primitive.m_center_tensor, jitter_samples)
-		fg_ray_samples_packed=fg_ray_samples_packed.compact_to_valid_samples()
 
+		#incurrs a GPU to CPU sync point if it's done right after compute_samples_fg(). Ideally you would stagger these so that the kernel for compute_samples_fg() has likely finished running before you compact the samples. Compacting requires finishing the compute_samples_fg() kernel because it needs to read the actual nr of samples created from CPU and this requires a wait. 
+		if compact_samples: 
+			fg_ray_samples_packed=fg_ray_samples_packed.compact_to_valid_samples()
+
+	# print("exiting create_samples_fg")
+	return fg_ray_samples_packed 
+
+
+def create_samples_bg(args, hyperparams, ray_origins, ray_dirs, jitter_samples, occupancy_grid, bounding_primitive):
 
 	#create ray samples for bg
 	if not args.with_mask:
+		ray_points_entry, ray_t_entry, ray_points_exit, ray_t_exit, does_ray_intersect_box=bounding_primitive.ray_intersection(ray_origins, ray_dirs)
 		bg_ray_samples_packed= RaySampler.compute_samples_bg(ray_origins, ray_dirs, ray_t_exit, hyperparams.nr_samples_bg, bounding_primitive.m_radius, bounding_primitive.m_center_tensor, jitter_samples, False)
 	else:
 		bg_ray_samples_packed=None
 
 
-	return fg_ray_samples_packed, bg_ray_samples_packed
+	return bg_ray_samples_packed
 

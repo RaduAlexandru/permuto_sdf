@@ -37,6 +37,7 @@ from permuto_sdf_py.utils.sdf_utils import filter_unconverged_points
 from permuto_sdf_py.utils.sdf_utils import importance_sampling_sdf_model
 from permuto_sdf_py.utils.nerf_utils import create_rays_from_frame
 from permuto_sdf_py.utils.nerf_utils import create_samples
+from permuto_sdf_py.utils.nerf_utils import create_samples_bg
 from permuto_sdf_py.utils.common_utils import TIME_START
 from permuto_sdf_py.utils.common_utils import TIME_END
 from permuto_sdf_py.utils.common_utils import lin2nchw
@@ -55,6 +56,8 @@ from permuto_sdf_py.utils.permuto_sdf_utils import loss_sphere_init
 from permuto_sdf_py.utils.permuto_sdf_utils import rgb_loss
 from permuto_sdf_py.utils.permuto_sdf_utils import eikonal_loss
 from permuto_sdf_py.utils.permuto_sdf_utils import module_exists
+from permuto_sdf_py.utils.permuto_sdf_utils import unpack_gt_tensors
+from permuto_sdf_py.utils.permuto_sdf_utils import compute_samples_for_next_iter_async
 from permuto_sdf_py.utils.aabb import AABB
 from permuto_sdf_py.callbacks.callback_utils import *
 if module_exists("apex"):
@@ -95,14 +98,14 @@ class HyperParamsPermutoSDF:
     max_nr_samples_per_ray=64 #for the foreground
     nr_samples_imp_sampling=16
     do_importance_sampling=True                         #adds nr_samples_imp_samplingx2 more samples per ray
-    use_color_calibration=True
+    use_color_calibration=False
     nr_rays=512
     sdf_geom_feat_size=32
     sdf_nr_iters_for_c2f=10000*s_mult
     rgb_nr_iters_for_c2f=1
     background_nr_iters_for_c2f=1
     target_nr_of_samples=nr_rays*(64+16+16)             #the nr of rays are dynamically changed so that we use this nr of samples in a forward pass. you can reduce this for faster training or if your GPU has little VRAM
-    async_background_estimation=False #runs the background estimation in another cuda stream. Will make the training finish faster at the cost of using more VRAM
+    use_async_compute=True #uses async creation of sample and runs the background estimation in another cuda stream. Will make the training finish faster at the cost of using more VRAM
 hyperparams=HyperParamsPermutoSDF()
 
 
@@ -110,13 +113,11 @@ hyperparams=HyperParamsPermutoSDF()
 
 
 def run_net(args, hyperparams, ray_origins, ray_dirs, img_indices, model_sdf, model_rgb, model_bg, model_colorcal, occupancy_grid, iter_nr_for_anneal,  cos_anneal_ratio, forced_variance):
-    event_finish_bg_sample_creation=torch.cuda.Event()
     with torch.set_grad_enabled(False):
         ray_points_entry, ray_t_entry, ray_points_exit, ray_t_exit, does_ray_intersect_box=model_sdf.boundary_primitive.ray_intersection(ray_origins, ray_dirs)
         TIME_START("create_samples")
         fg_ray_samples_packed, bg_ray_samples_packed = create_samples(args, hyperparams, ray_origins, ray_dirs, model_sdf.training, occupancy_grid, model_sdf.boundary_primitive)
         #event
-        event_finish_bg_sample_creation.record()
 
         
         if hyperparams.do_importance_sampling and fg_ray_samples_packed.samples_pos.shape[0]!=0:
@@ -124,7 +125,6 @@ def run_net(args, hyperparams, ray_origins, ray_dirs, img_indices, model_sdf, mo
             fg_ray_samples_packed=importance_sampling_sdf_model(model_sdf, fg_ray_samples_packed, nr_rays_valid, hyperparams.nr_samples_imp_sampling, ray_origins, ray_dirs, ray_t_exit, iter_nr_for_anneal)
         TIME_END("create_samples") #4ms in PermutoSDF
 
-    # print("fg_ray_samples_packed.samples_pos.shape",fg_ray_samples_packed.samples_pos.shape)
 
     TIME_START("render_fg")    
     if fg_ray_samples_packed.samples_pos.shape[0]==0: #if we actualyl have samples for this batch fo rays
@@ -150,31 +150,17 @@ def run_net(args, hyperparams, ray_origins, ray_dirs, img_indices, model_sdf, mo
 
 
 
-    # print("bg_ray_samples_packed.samples_pos_4d",bg_ray_samples_packed.samples_pos_4d)
 
     TIME_START("render_bg")    
     #run nerf bg
     if args.with_mask:
         pred_rgb_bg=None
     elif bg_ray_samples_packed.samples_pos_4d.shape[0]!=0: #have to model the background
-        #run the bg in another stream or the default stream
-        if hyperparams.async_background_estimation:
-            cuda_stream_bg=torch.cuda.Stream(priority=0)
-        else:
-            cuda_stream_bg=torch.cuda.current_stream()
-        event_finish_bg=torch.cuda.Event()
-        with torch.cuda.StreamContext(cuda_stream_bg):
-            if hyperparams.async_background_estimation:
-                event_finish_bg_sample_creation.wait() #block BG stream until the event of finishing samples has finished
-            #compute rgb and density
-            rgb_samples_bg, density_samples_bg=model_bg( bg_ray_samples_packed.samples_pos_4d, bg_ray_samples_packed.samples_dirs, iter_nr_for_anneal, model_colorcal, img_indices, ray_start_end_idx=bg_ray_samples_packed.ray_start_end_idx) 
-            #volumetric integration
-            weights_bg, weight_sum_bg, _= model_bg.volume_renderer_nerf.compute_weights(bg_ray_samples_packed, density_samples_bg.view(-1,1))
-            pred_rgb_bg=model_bg.volume_renderer_nerf.integrate(bg_ray_samples_packed, rgb_samples_bg, weights_bg)
-            #event
-            event_finish_bg.record()
-        if hyperparams.async_background_estimation:
-            event_finish_bg.wait() #block default stream until the event of finishing BG has finished so we properly use the event_finish_bg
+        #compute rgb and density
+        rgb_samples_bg, density_samples_bg=model_bg( bg_ray_samples_packed.samples_pos_4d, bg_ray_samples_packed.samples_dirs, iter_nr_for_anneal, model_colorcal, img_indices, ray_start_end_idx=bg_ray_samples_packed.ray_start_end_idx) 
+        #volumetric integration
+        weights_bg, weight_sum_bg, _= model_bg.volume_renderer_nerf.compute_weights(bg_ray_samples_packed, density_samples_bg.view(-1,1))
+        pred_rgb_bg=model_bg.volume_renderer_nerf.integrate(bg_ray_samples_packed, rgb_samples_bg, weights_bg)
         #combine
         pred_rgb_bg = bg_transmittance.view(-1,1) * pred_rgb_bg
         pred_rgb = pred_rgb + pred_rgb_bg
@@ -183,8 +169,82 @@ def run_net(args, hyperparams, ray_origins, ray_dirs, img_indices, model_sdf, mo
 
 
 
-    # return pred_rgb, sdf_gradients, weights, weights_sum, fg_ray_samples_packed
     return pred_rgb, pred_rgb_bg, pred_normals, sdf_gradients, weights_sum, fg_ray_samples_packed
+
+
+#runs the network assuming we have previously calculated the ray_samples and also enqueues the precaculation of the next iteration of samples
+def run_net_with_async_compute(args, hyperparams, tensor_reel, async_samples_dict, model_sdf, model_rgb, model_bg, model_colorcal, occupancy_grid, iter_nr_for_anneal, cos_anneal_ratio, forced_variance, nr_rays_to_create):
+
+    #get the things necessary from these samples_precalculated
+    TIME_START("create_samples")    
+    with torch.set_grad_enabled(False):
+        fg_ray_samples_packed=async_samples_dict["fg_samples"]
+        bg_ray_samples_packed=async_samples_dict["bg_samples"]
+        ray_origins=async_samples_dict["ray_origins"]
+        ray_dirs=async_samples_dict["ray_dirs"]
+        ray_t_exit=async_samples_dict["ray_t_exit"]
+        img_indices=async_samples_dict["img_indices"]
+        #we enqueued the reading of the exact nr of samples quite some time ago so luckily the kernels would be done and this doesn't block
+        nr_samples=fg_ray_samples_packed.wait_and_get_exact_nr_samples() 
+        nr_rays_valid=fg_ray_samples_packed.wait_and_get_exact_nr_rays_valid() 
+        fg_ray_samples_packed=fg_ray_samples_packed.compact_given_exact_nr_samples(nr_samples)
+
+        if hyperparams.do_importance_sampling and fg_ray_samples_packed.samples_pos.shape[0]!=0:
+            fg_ray_samples_packed=importance_sampling_sdf_model(model_sdf, fg_ray_samples_packed, nr_rays_valid, hyperparams.nr_samples_imp_sampling, ray_origins, ray_dirs, ray_t_exit, iter_nr_for_anneal)
+
+        # bg_ray_samples_packed = create_samples_bg(args, hyperparams, ray_origins, ray_dirs, model_sdf.training, occupancy_grid, model_sdf.boundary_primitive)
+
+        #queue up the samples for the next iter
+        async_samples_next_iter_dict=compute_samples_for_next_iter_async(args, hyperparams, tensor_reel, nr_rays_to_create, model_sdf, occupancy_grid)
+    TIME_END("create_samples")    
+
+
+    TIME_START("render_fg")    
+    #foreground 
+    #get sdf
+    sdf, sdf_gradients, geom_feat=model_sdf.get_sdf_and_gradient(fg_ray_samples_packed.samples_pos, iter_nr_for_anneal)
+    #get rgb
+    rgb_samples = model_rgb( fg_ray_samples_packed.samples_pos, fg_ray_samples_packed.samples_dirs, sdf_gradients, geom_feat, iter_nr_for_anneal, model_colorcal, img_indices, fg_ray_samples_packed.ray_start_end_idx)
+    #volumetric integration
+    weights, weights_sum, bg_transmittance, inv_s = model_rgb.volume_renderer_neus.compute_weights(fg_ray_samples_packed, sdf, sdf_gradients, cos_anneal_ratio, forced_variance) #neus
+    pred_rgb=model_rgb.volume_renderer_neus.integrate(fg_ray_samples_packed, rgb_samples, weights)
+
+    #compute also normal by integrating the gradient
+    grad_integrated_per_ray=model_rgb.volume_renderer_neus.integrate(fg_ray_samples_packed, sdf_gradients, weights)
+    pred_normals=F.normalize(grad_integrated_per_ray, dim=1)
+    TIME_END("render_fg") #7.2ms in PermutoSDF   
+
+
+
+
+    TIME_START("render_bg")    
+    #run nerf bg
+    if args.with_mask:
+        pred_rgb_bg=None
+    elif bg_ray_samples_packed.samples_pos_4d.shape[0]!=0: #have to model the background
+        #run the bg in another stream or the default stream
+        cuda_stream_bg=torch.cuda.Stream(priority=0)
+        # cuda_stream_bg=torch.cuda.current_stream()
+        event_finish_bg=torch.cuda.Event()
+        with torch.cuda.StreamContext(cuda_stream_bg):
+            #compute rgb and density
+            rgb_samples_bg, density_samples_bg=model_bg( bg_ray_samples_packed.samples_pos_4d, bg_ray_samples_packed.samples_dirs, iter_nr_for_anneal, model_colorcal, img_indices, ray_start_end_idx=bg_ray_samples_packed.ray_start_end_idx) 
+            #volumetric integration
+            weights_bg, weight_sum_bg, _= model_bg.volume_renderer_nerf.compute_weights(bg_ray_samples_packed, density_samples_bg.view(-1,1))
+            pred_rgb_bg=model_bg.volume_renderer_nerf.integrate(bg_ray_samples_packed, rgb_samples_bg, weights_bg)
+            #event
+            event_finish_bg.record()
+        event_finish_bg.wait() #block default stream until the event of finishing BG has finished so we properly use the pred_rgb_bg
+        #combine
+        pred_rgb_bg = bg_transmittance.view(-1,1) * pred_rgb_bg
+        pred_rgb = pred_rgb + pred_rgb_bg
+    TIME_END("render_bg")   
+
+    
+
+    return pred_rgb, pred_rgb_bg, pred_normals, sdf_gradients, weights_sum, fg_ray_samples_packed, async_samples_next_iter_dict
+
+
 
 #does forward pass through the model but breaks the rays up into chunks so that we don't run out of memory. Useful for rendering a full img
 def run_net_in_chunks(frame, chunk_size, args, hyperparams, model_sdf, model_rgb, model_bg, occupancy_grid, iter_nr_for_anneal, cos_anneal_ratio, forced_variance):
@@ -357,7 +417,17 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
 
 
             TIME_START("run_net")
-            pred_rgb, pred_rgb_bg, pred_normals, sdf_gradients, weights_sum, fg_ray_samples_packed  =run_net(args, hyperparams, ray_origins, ray_dirs, img_indices, model_sdf, model_rgb, model_bg, model_colorcal, occupancy_grid, iter_nr_for_anneal,  cos_anneal_ratio, forced_variance)
+            if hyperparams.use_async_compute: #staggers the creation of consumption of ray samples so a to avoid stalling the GPU
+                if just_finished_sphere_fit: #the first time we start optimizing the network we don't have yet samples
+                    async_samples_dict=compute_samples_for_next_iter_async(args, hyperparams, tensor_reel, nr_rays_to_create, model_sdf, occupancy_grid)
+                #run net
+                pred_rgb, pred_rgb_bg, pred_normals, sdf_gradients, weights_sum, fg_ray_samples_packed, async_samples_next_iter_dict =run_net_with_async_compute(args, hyperparams, tensor_reel, async_samples_dict, model_sdf, model_rgb, model_bg, model_colorcal, occupancy_grid, iter_nr_for_anneal, cos_anneal_ratio, forced_variance, nr_rays_to_create)
+                ##get the samples that were used for this iter and get from them the ground-truth tensors
+                gt_selected, gt_mask, does_ray_intersect_box = unpack_gt_tensors(async_samples_dict) 
+                #swap 
+                async_samples_dict=async_samples_next_iter_dict
+            else:
+                pred_rgb, pred_rgb_bg, pred_normals, sdf_gradients, weights_sum, fg_ray_samples_packed  =run_net(args, hyperparams, ray_origins, ray_dirs, img_indices, model_sdf, model_rgb, model_bg, model_colorcal, occupancy_grid, iter_nr_for_anneal,  cos_anneal_ratio, forced_variance)
             TIME_END("run_net")
             
 
@@ -385,10 +455,11 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
             #loss for empty space sdf            
             if hyperparams.use_occupancy_grid:
                 #highsdf just to avoice voxels becoming "occcupied" due to their sdf dropping to zero
-                offsurface_points=model_sdf.boundary_primitive.rand_points_inside(nr_points=1024)
-                sdf_rand, _=model_sdf( offsurface_points, iter_nr_for_anneal)
-                loss_offsurface_high_sdf=torch.exp(-1e2 * torch.abs(sdf_rand)).mean()
-                loss+=loss_offsurface_high_sdf*hyperparams.offsurface_weight
+                if phase.iter_nr%8==0:
+                    offsurface_points=model_sdf.boundary_primitive.rand_points_inside(nr_points=1024*8)
+                    sdf_rand, _=model_sdf( offsurface_points, iter_nr_for_anneal)
+                    loss_offsurface_high_sdf=torch.exp(-1e2 * torch.abs(sdf_rand)).mean()
+                    loss+=loss_offsurface_high_sdf*hyperparams.offsurface_weight
 
             #loss on lipshitz
             loss_lipshitz=model_rgb.mlp.lipshitz_bound_full()
@@ -403,7 +474,7 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
 
             with torch.set_grad_enabled(False):
                 #update occupancy
-                if phase.iter_nr%8==0 and hyperparams.use_occupancy_grid:
+                if phase.iter_nr%8==0 and phase.iter_nr<hyperparams.lr_milestones[0]*1.2 and hyperparams.use_occupancy_grid:
                     grid_centers_random, grid_center_indices=occupancy_grid.compute_random_sample_of_grid_points(256*256*4,True)
                     sdf_grid,_=model_sdf( grid_centers_random, iter_nr_for_anneal) 
                     occupancy_grid.update_with_sdf_random_sample(grid_center_indices, sdf_grid, model_rgb.volume_renderer_neus.get_last_inv_s(), 1e-4 )
@@ -412,7 +483,7 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
                 #adjust nr_rays_to_create based on how many samples we have in total
                 cur_nr_samples=fg_ray_samples_packed.samples_pos.shape[0]
                 multiplier_nr_samples=float(hyperparams.target_nr_of_samples)/cur_nr_samples
-                nr_rays_to_create=int(nr_rays_to_create*multiplier_nr_samples)
+                nr_rays_to_create=int(fg_ray_samples_packed.m_nr_rays*multiplier_nr_samples)
 
                 #increase also the WD on the encoding of the model_rgb to encourage the network to get high detail using the model_sdf
                 if iter_nr_for_anneal>=hyperparams.iter_start_reduce_curv:

@@ -15,7 +15,13 @@ from permuto_sdf  import OccupancyGrid
 from permuto_sdf  import VolumeRendering
 from permuto_sdf  import RaySamplesPacked
 from permuto_sdf  import RaySampler
+from permuto_sdf import PermutoSDF
 from easypbr import Camera #for get_frames_cropped
+from permuto_sdf_py.utils.nerf_utils import create_samples
+from permuto_sdf_py.utils.nerf_utils import create_samples_fg
+from permuto_sdf_py.utils.nerf_utils import create_samples_bg
+
+
 
 
 
@@ -235,3 +241,42 @@ def load_from_checkpoint(ckpt_path_full, model_sdf, model_rgb, model_bg, occupan
     model_bg.eval()
     occupancy_grid.set_grid_values(torch.load( checkpoint_path_grid_values ))
     occupancy_grid.set_grid_occupancy(torch.load( checkpoint_path_grid_occupancy  ))
+
+def compute_samples_for_next_iter_async(args, hyperparams, tensor_reel, nr_rays_to_create, model_sdf, occupancy_grid):
+    with torch.set_grad_enabled(False):
+        cuda_stream_for_creating_samples=torch.cuda.Stream(priority=0)
+        # cuda_stream_for_creating_samples=torch.cuda.current_stream()
+        with torch.cuda.StreamContext(cuda_stream_for_creating_samples):
+
+            ray_origins_next_iter, ray_dirs_next_iter, gt_selected_next_iter, gt_mask_next_iter,  img_indices_next_iter=PermutoSDF.random_rays_from_reel(tensor_reel, nr_rays_to_create) 
+            _, _, _, ray_t_exit_next_iter, does_ray_intersect_box_next_iter=model_sdf.boundary_primitive.ray_intersection(ray_origins_next_iter, ray_dirs_next_iter)
+
+            #have to queue up the BG before the FG because we synchronize later th FG samples when they finish and if the FG finished it means also the BG finished
+            bg_ray_samples_packed_next_iter = create_samples_bg(args, hyperparams, ray_origins_next_iter, ray_dirs_next_iter, model_sdf.training, occupancy_grid, model_sdf.boundary_primitive)
+
+            #foreground
+            fg_ray_samples_packed_next_iter = create_samples_fg(args, hyperparams, ray_origins_next_iter, ray_dirs_next_iter, model_sdf.training, occupancy_grid, model_sdf.boundary_primitive, compact_samples=False)
+            fg_ray_samples_packed_next_iter.enqueue_getting_exact_nr_samples() #queues the cudamemcpyasync for reading the nr of samples and makes an event on GPU to check when that call is finished. this should not block
+            fg_ray_samples_packed_next_iter.enqueue_getting_exact_nr_rays_valid()
+
+
+       
+        samples_precalculated={}
+        samples_precalculated["fg_samples"]=fg_ray_samples_packed_next_iter
+        samples_precalculated["bg_samples"]=bg_ray_samples_packed_next_iter
+        samples_precalculated["ray_origins"]=ray_origins_next_iter
+        samples_precalculated["ray_dirs"]=ray_dirs_next_iter
+        samples_precalculated["ray_t_exit"]=ray_t_exit_next_iter
+        samples_precalculated["img_indices"]=img_indices_next_iter
+        samples_precalculated["gt_selected"]=gt_selected_next_iter
+        samples_precalculated["gt_mask"]=gt_mask_next_iter
+        samples_precalculated["does_ray_intersect_box"]=does_ray_intersect_box_next_iter
+
+        return samples_precalculated
+
+def unpack_gt_tensors(async_samples_dict):
+    gt_selected=async_samples_dict["gt_selected"]
+    gt_mask=async_samples_dict["gt_mask"]
+    does_ray_intersect_box=async_samples_dict["does_ray_intersect_box"]
+
+    return gt_selected, gt_mask, does_ray_intersect_box
