@@ -289,7 +289,7 @@ torch::Tensor OccupancyGrid::check_occupancy(const torch::Tensor& points){
     const dim3 blocks = { (unsigned int)div_round_up(nr_points, BLOCK_SIZE), 1, 1 }; 
 
 
-    OccupancyGridGPU::check_occupancy_gpu<<<blocks, BLOCK_SIZE>>>(
+    OccupancyGridGPU::check_occupancy_gpu<<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
                 nr_points,
                 m_nr_voxels_per_dim,
                 m_grid_extent,
@@ -318,7 +318,7 @@ void OccupancyGrid::update_with_density(const torch::Tensor& density, const floa
     const dim3 blocks = { (unsigned int)div_round_up(nr_voxels, BLOCK_SIZE), 1, 1 }; 
 
 
-    OccupancyGridGPU::update_with_density_gpu<<<blocks, BLOCK_SIZE>>>(
+    OccupancyGridGPU::update_with_density_gpu<<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
                 nr_voxels,
                 density.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
                 m_nr_voxels_per_dim,
@@ -345,7 +345,7 @@ void OccupancyGrid::update_with_density_random_sample(const torch::Tensor& point
     const dim3 blocks = { (unsigned int)div_round_up(nr_points, BLOCK_SIZE), 1, 1 }; 
 
 
-    OccupancyGridGPU::update_with_density_random_sample_gpu<<<blocks, BLOCK_SIZE>>>(
+    OccupancyGridGPU::update_with_density_random_sample_gpu<<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
                 nr_points,
                 density.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
                 m_nr_voxels_per_dim,
@@ -371,7 +371,7 @@ void OccupancyGrid::update_with_sdf(const torch::Tensor& sdf, const float inv_s,
     const dim3 blocks = { (unsigned int)div_round_up(nr_voxels, BLOCK_SIZE), 1, 1 }; 
 
 
-    OccupancyGridGPU::update_with_sdf_gpu<<<blocks, BLOCK_SIZE>>>(
+    OccupancyGridGPU::update_with_sdf_gpu<<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
                 nr_voxels,
                 sdf.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
                 m_grid_extent,
@@ -400,7 +400,7 @@ void OccupancyGrid::update_with_sdf_random_sample(const torch::Tensor& point_ind
     const dim3 blocks = { (unsigned int)div_round_up(nr_points, BLOCK_SIZE), 1, 1 }; 
 
 
-    OccupancyGridGPU::update_with_sdf_random_sample_gpu<<<blocks, BLOCK_SIZE>>>(
+    OccupancyGridGPU::update_with_sdf_random_sample_gpu<<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
                 nr_points,
                 sdf.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
                 m_grid_extent,

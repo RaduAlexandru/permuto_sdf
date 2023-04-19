@@ -110,10 +110,13 @@ hyperparams=HyperParamsPermutoSDF()
 
 
 def run_net(args, hyperparams, ray_origins, ray_dirs, img_indices, model_sdf, model_rgb, model_bg, model_colorcal, occupancy_grid, iter_nr_for_anneal,  cos_anneal_ratio, forced_variance):
+    event_finish_bg_sample_creation=torch.cuda.Event()
     with torch.set_grad_enabled(False):
         ray_points_entry, ray_t_entry, ray_points_exit, ray_t_exit, does_ray_intersect_box=model_sdf.boundary_primitive.ray_intersection(ray_origins, ray_dirs)
         TIME_START("create_samples")
         fg_ray_samples_packed, bg_ray_samples_packed = create_samples(args, hyperparams, ray_origins, ray_dirs, model_sdf.training, occupancy_grid, model_sdf.boundary_primitive)
+        #event
+        event_finish_bg_sample_creation.record()
 
         
         if hyperparams.do_importance_sampling and fg_ray_samples_packed.samples_pos.shape[0]!=0:
@@ -161,6 +164,8 @@ def run_net(args, hyperparams, ray_origins, ray_dirs, img_indices, model_sdf, mo
             cuda_stream_bg=torch.cuda.current_stream()
         event_finish_bg=torch.cuda.Event()
         with torch.cuda.StreamContext(cuda_stream_bg):
+            if hyperparams.async_background_estimation:
+                event_finish_bg_sample_creation.wait() #block BG stream until the event of finishing samples has finished
             #compute rgb and density
             rgb_samples_bg, density_samples_bg=model_bg( bg_ray_samples_packed.samples_pos_4d, bg_ray_samples_packed.samples_dirs, iter_nr_for_anneal, model_colorcal, img_indices, ray_start_end_idx=bg_ray_samples_packed.ray_start_end_idx) 
             #volumetric integration
