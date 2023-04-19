@@ -712,8 +712,8 @@ class Colorcal(torch.nn.Module):
         #get the nr of samples per_ray
         nr_samples_per_ray=ray_start_end_idx[:,1:2]-ray_start_end_idx[:,0:1] 
         #repeat each weight and each bias, as many samples as we have for each ray
-        weights_per_pixel=torch.repeat_interleave(weights_per_pixel, nr_samples_per_ray.view(-1), dim=0)
-        bias_per_pixel=torch.repeat_interleave(bias_per_pixel, nr_samples_per_ray.view(-1), dim=0)
+        weights_per_pixel=torch.repeat_interleave(weights_per_pixel, nr_samples_per_ray.view(-1), dim=0, output_size=rgb_samples.shape[0])
+        bias_per_pixel=torch.repeat_interleave(bias_per_pixel, nr_samples_per_ray.view(-1), dim=0, output_size=rgb_samples.shape[0])
 
         rgb_samples=rgb_samples*weights_per_pixel+bias_per_pixel
 
