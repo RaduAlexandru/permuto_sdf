@@ -97,7 +97,7 @@ torch::Tensor OccupancyGrid::compute_grid_points(const bool randomize_position){
     const dim3 blocks = { (unsigned int)div_round_up(nr_voxels, BLOCK_SIZE), 1, 1 }; 
 
 
-    OccupancyGridGPU::compute_grid_points_gpu<<<blocks, BLOCK_SIZE>>>(
+    OccupancyGridGPU::compute_grid_points_gpu<<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
                 nr_voxels,
                 m_nr_voxels_per_dim,
                 m_grid_extent,
@@ -126,7 +126,7 @@ std::tuple<torch::Tensor,torch::Tensor> OccupancyGrid::compute_random_sample_of_
     const dim3 blocks = { (unsigned int)div_round_up(nr_voxels_to_select, BLOCK_SIZE), 1, 1 }; 
 
 
-    OccupancyGridGPU::compute_random_sample_of_grid_points_gpu<<<blocks, BLOCK_SIZE>>>(
+    OccupancyGridGPU::compute_random_sample_of_grid_points_gpu<<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
                 nr_voxels_to_select,
                 m_nr_voxels_per_dim,
                 m_grid_extent,
@@ -162,7 +162,7 @@ RaySamplesPacked OccupancyGrid::compute_samples_in_occupied_regions(const torch:
 
 
     // TIME_START("compute_samples_packed_cuda")
-    OccupancyGridGPU::compute_samples_in_occupied_regions_gpu<<<blocks, BLOCK_SIZE>>>(
+    OccupancyGridGPU::compute_samples_in_occupied_regions_gpu<<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
                 nr_rays,
                 m_nr_voxels_per_dim,
                 m_grid_extent,
@@ -209,7 +209,7 @@ RaySamplesPacked OccupancyGrid::compute_first_sample_start_of_occupied_regions(c
     const dim3 blocks = { (unsigned int)div_round_up(nr_rays, BLOCK_SIZE), 1, 1 }; 
 
 
-    OccupancyGridGPU::compute_first_sample_start_of_occupied_regions_gpu<<<blocks, BLOCK_SIZE>>>(
+    OccupancyGridGPU::compute_first_sample_start_of_occupied_regions_gpu<<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
                 nr_rays,
                 m_nr_voxels_per_dim,
                 m_grid_extent,
@@ -253,7 +253,7 @@ std::tuple<torch::Tensor,torch::Tensor> OccupancyGrid::advance_sample_to_next_oc
     torch::Tensor is_within_bounds=torch::ones({ nr_points,1 },  torch::dtype(torch::kBool).device(torch::kCUDA, 0)  );
 
 
-    OccupancyGridGPU::advance_sample_to_next_occupied_voxel_gpu<<<blocks, BLOCK_SIZE>>>(
+    OccupancyGridGPU::advance_sample_to_next_occupied_voxel_gpu<<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
                 nr_points,
                 m_nr_voxels_per_dim,
                 m_grid_extent,

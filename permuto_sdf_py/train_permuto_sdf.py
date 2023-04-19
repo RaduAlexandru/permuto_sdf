@@ -102,6 +102,7 @@ class HyperParamsPermutoSDF:
     rgb_nr_iters_for_c2f=1
     background_nr_iters_for_c2f=1
     target_nr_of_samples=nr_rays*(64+16+16)             #the nr of rays are dynamically changed so that we use this nr of samples in a forward pass. you can reduce this for faster training or if your GPU has little VRAM
+    async_background_estimation=False #runs the background estimation in another cuda stream. Will make the training finish faster at the cost of using more VRAM
 hyperparams=HyperParamsPermutoSDF()
 
 
@@ -117,7 +118,7 @@ def run_net(args, hyperparams, ray_origins, ray_dirs, img_indices, model_sdf, mo
         
         if hyperparams.do_importance_sampling and fg_ray_samples_packed.samples_pos.shape[0]!=0:
             nr_rays_valid=fg_ray_samples_packed.compute_exact_nr_rays_valid_cpu() #will block
-            fg_ray_samples_packed=importance_sampling_sdf_model(model_sdf, fg_ray_samples_packed, nr_rays_valid, ray_origins, ray_dirs, ray_t_exit, iter_nr_for_anneal)
+            fg_ray_samples_packed=importance_sampling_sdf_model(model_sdf, fg_ray_samples_packed, nr_rays_valid, hyperparams.nr_samples_imp_sampling, ray_origins, ray_dirs, ray_t_exit, iter_nr_for_anneal)
         TIME_END("create_samples") #4ms in PermutoSDF
 
     # print("fg_ray_samples_packed.samples_pos.shape",fg_ray_samples_packed.samples_pos.shape)
@@ -152,13 +153,23 @@ def run_net(args, hyperparams, ray_origins, ray_dirs, img_indices, model_sdf, mo
     #run nerf bg
     if args.with_mask:
         pred_rgb_bg=None
-    # else: #have to model the background
     elif bg_ray_samples_packed.samples_pos_4d.shape[0]!=0: #have to model the background
-        #compute rgb and density
-        rgb_samples_bg, density_samples_bg=model_bg( bg_ray_samples_packed.samples_pos_4d, bg_ray_samples_packed.samples_dirs, iter_nr_for_anneal, model_colorcal, img_indices, ray_start_end_idx=bg_ray_samples_packed.ray_start_end_idx) 
-        #volumetric integration
-        weights_bg, weight_sum_bg, _= model_bg.volume_renderer_nerf.compute_weights(bg_ray_samples_packed, density_samples_bg.view(-1,1))
-        pred_rgb_bg=model_bg.volume_renderer_nerf.integrate(bg_ray_samples_packed, rgb_samples_bg, weights_bg)
+        #run the bg in another stream or the default stream
+        if hyperparams.async_background_estimation:
+            cuda_stream_bg=torch.cuda.Stream(priority=0)
+        else:
+            cuda_stream_bg=torch.cuda.current_stream()
+        event_finish_bg=torch.cuda.Event()
+        with torch.cuda.StreamContext(cuda_stream_bg):
+            #compute rgb and density
+            rgb_samples_bg, density_samples_bg=model_bg( bg_ray_samples_packed.samples_pos_4d, bg_ray_samples_packed.samples_dirs, iter_nr_for_anneal, model_colorcal, img_indices, ray_start_end_idx=bg_ray_samples_packed.ray_start_end_idx) 
+            #volumetric integration
+            weights_bg, weight_sum_bg, _= model_bg.volume_renderer_nerf.compute_weights(bg_ray_samples_packed, density_samples_bg.view(-1,1))
+            pred_rgb_bg=model_bg.volume_renderer_nerf.integrate(bg_ray_samples_packed, rgb_samples_bg, weights_bg)
+            #event
+            event_finish_bg.record()
+        if hyperparams.async_background_estimation:
+            event_finish_bg.wait() #block default stream until the event of finishing BG has finished so we properly use the event_finish_bg
         #combine
         pred_rgb_bg = bg_transmittance.view(-1,1) * pred_rgb_bg
         pred_rgb = pred_rgb + pred_rgb_bg
