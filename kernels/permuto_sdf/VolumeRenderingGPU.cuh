@@ -1031,14 +1031,14 @@ combine_uniform_samples_with_imp_gpu(
     //caulcate how many samples we need for this ray
     int combined_nr_samples=uniform_nr_samples+imp_nr_samples;
 
-    // //too low nr of samples
-    // if(uniform_nr_samples<=1){
-    //     //we set the ray quantities to 0 and there is nothing to set in the per_sample quantities because we have no samples
-    //     combined_ray_fixed_dt[idx][0]=0;
-    //     combined_ray_start_end_idx[idx][0]=0;
-    //     combined_ray_start_end_idx[idx][1]=0;
-    //     return;
-    // }
+    // //too low nr of samples when the ray passes only through empty space for example
+    if(uniform_nr_samples<=1){
+        //we set the ray quantities to 0 and there is nothing to set in the per_sample quantities because we have no samples
+        combined_ray_fixed_dt[idx][0]=0;
+        combined_ray_start_end_idx[idx][0]=0;
+        combined_ray_start_end_idx[idx][1]=0;
+        return;
+    }
     
     //allocate similar to how we do in the occupancy grid
     int combined_indx_start_sample=atomicAdd(&combined_cur_nr_samples[0],combined_nr_samples);

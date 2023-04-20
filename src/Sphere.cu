@@ -60,7 +60,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
     const dim3 blocks = { (unsigned int)div_round_up(nr_rays, BLOCK_SIZE), 1, 1 };
 
 
-    ray_intersection_gpu<<<blocks, BLOCK_SIZE>>>(
+    ray_intersection_gpu<<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
         nr_rays,
         m_radius,
         m_center_tensor.packed_accessor32<float,1,torch::RestrictPtrTraits>(),
@@ -92,7 +92,7 @@ torch::Tensor Sphere::rand_points_inside(const int nr_points){
     const dim3 blocks = { (unsigned int)div_round_up(nr_points, BLOCK_SIZE), 1, 1 };
 
 
-    rand_points_inside_gpu<<<blocks, BLOCK_SIZE>>>(
+    rand_points_inside_gpu<<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
         nr_points,
         m_radius,
         m_center_tensor.packed_accessor32<float,1,torch::RestrictPtrTraits>(),

@@ -187,8 +187,6 @@ def run_net_with_async_compute(args, hyperparams, tensor_reel, async_samples_dic
         #we enqueued the reading of the exact nr of samples quite some time ago so luckily the kernels would be done and this doesn't block
         nr_samples=fg_ray_samples_packed.wait_and_get_exact_nr_samples() 
         nr_rays_valid=fg_ray_samples_packed.wait_and_get_exact_nr_rays_valid() 
-        # assert nr_samples==fg_ray_samples_packed.compute_exact_nr_samples_cpu(), "nr_samples async doesnt correspond with the non async one just after the wait"
-        # assert nr_rays_valid==fg_ray_samples_packed.compute_exact_nr_rays_valid_cpu(), "nr_rays_valid async doesnt correspond with the non async one just after the wait"
         fg_ray_samples_packed=fg_ray_samples_packed.compact_given_exact_nr_samples(nr_samples)
 
 
