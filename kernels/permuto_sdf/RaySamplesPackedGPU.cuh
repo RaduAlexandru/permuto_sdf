@@ -23,6 +23,7 @@ compact_to_valid_samples_gpu(
     const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> samples_sdf,
     const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> ray_fixed_dt,
     const torch::PackedTensorAccessor32<int,2,torch::RestrictPtrTraits> ray_start_end_idx,
+    const int max_nr_samples,
     //output
     torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> out_samples_pos,
     torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> out_samples_pos_4d,
@@ -56,6 +57,10 @@ compact_to_valid_samples_gpu(
 
         //allocate samples for out ray 
         int out_idx_start=atomicAdd(&out_cur_nr_samples[0], nr_samples_per_ray);
+        if((out_idx_start+nr_samples_per_ray)>max_nr_samples){
+            printf("compact_to_valid_samples_gpu: about to write more samples than what we preallocated\n");
+            return;
+        }
         //copy all the samples
         for (int i=0; i<nr_samples_per_ray; i++){
             //samples_pos

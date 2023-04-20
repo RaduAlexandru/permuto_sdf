@@ -88,7 +88,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
     const dim3 blocks = { (unsigned int)div_round_up(nr_rays, BLOCK_SIZE), 1, 1 };
 
 
-    random_rays_from_reel_gpu<<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
+    random_rays_from_reel_gpu<<<blocks, BLOCK_SIZE>>>(
         nr_rays,
         nr_images,
         img_height,
@@ -137,7 +137,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
     const dim3 blocks = { (unsigned int)div_round_up(nr_points, BLOCK_SIZE), 1, 1 };
 
 
-    rays_from_reprojection_reel_gpu<<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
+    rays_from_reprojection_reel_gpu<<<blocks, BLOCK_SIZE>>>(
         nr_points,
         nr_images,
         img_height,
@@ -190,7 +190,7 @@ torch::Tensor PermutoSDF::spherical_harmonics(const torch::Tensor& dirs, const i
     const dim3 blocks = { (unsigned int)div_round_up(nr_elements, BLOCK_SIZE), 1, 1 }; 
 
 
-    spherical_harmonics_gpu<<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
+    spherical_harmonics_gpu<<<blocks, BLOCK_SIZE>>>(
         nr_elements,
         degree,
         dirs.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
@@ -217,7 +217,7 @@ torch::Tensor PermutoSDF::update_errors_of_matching_indices(const torch::Tensor&
 
     const dim3 blocks = { (unsigned int)div_round_up(nr_old_errors, BLOCK_SIZE), 1, 1 }; //the blocks are executed in order, first the blocks for the first resolution, then the second and so on
 
-    update_errors_of_matching_indices_gpu<<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
+    update_errors_of_matching_indices_gpu<<<blocks, BLOCK_SIZE>>>(
         nr_old_errors,
         nr_new_errors,
         old_indices.packed_accessor32<long,1,torch::RestrictPtrTraits>(),
@@ -255,7 +255,7 @@ torch::Tensor PermutoSDF::meshgrid3d(const float min, const float max, const int
     dim3 block_size(8, 8, 8);
         
 
-    meshgrid3d_gpu<<<blocks, block_size, 0, at::cuda::getCurrentCUDAStream()>>>(
+    meshgrid3d_gpu<<<blocks, block_size>>>(
         nr_points_per_dim,
         min, 
         max,

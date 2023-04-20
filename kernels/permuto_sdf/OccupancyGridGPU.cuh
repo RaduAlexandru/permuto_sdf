@@ -604,6 +604,10 @@ compute_samples_in_occupied_regions_gpu(
         //if we are about to create more samples that we can actually store, just exit this thread
         //however we still keep writing into ray_start_end_idx because we want to be able later to filter those rays out that actually have no samples and not process them or not volumetrically integrate them
         if( (indx_start_sample+nr_samples_to_create)>max_nr_samples){
+            printf("occupancy_grid about to write more samples than what we preallocated\n");
+            ray_fixed_dt[idx][0]=0;
+            ray_start_end_idx[idx][0]=0;
+            ray_start_end_idx[idx][1]=0;
             return;
         }
 

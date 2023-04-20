@@ -59,7 +59,7 @@ RaySamplesPacked RaySampler::compute_samples_bg(const torch::Tensor& ray_origins
     const dim3 blocks = { (unsigned int)div_round_up(nr_rays, BLOCK_SIZE), 1, 1 }; 
 
 
-    RaySamplerGPU::compute_samples_bg_gpu<<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
+    RaySamplerGPU::compute_samples_bg_gpu<<<blocks, BLOCK_SIZE>>>(
                 nr_rays,
                 nr_samples_per_ray,
                 ray_origins.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
@@ -118,7 +118,7 @@ RaySamplesPacked RaySampler::compute_samples_fg(const torch::Tensor& ray_origins
 
     const dim3 blocks = { (unsigned int)div_round_up(nr_rays, BLOCK_SIZE), 1, 1 }; 
 
-    RaySamplerGPU::compute_samples_fg_gpu<<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
+    RaySamplerGPU::compute_samples_fg_gpu<<<blocks, BLOCK_SIZE>>>(
                 nr_rays,
                 ray_origins.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
                 ray_dirs.packed_accessor32<float,2,torch::RestrictPtrTraits>(),

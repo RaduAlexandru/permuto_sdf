@@ -55,7 +55,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor> VolumeRen
 
 
     // TIME_START("volume_render_nerf")
-    VolumeRenderingGPU::volume_render_nerf<<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
+    VolumeRenderingGPU::volume_render_nerf<<<blocks, BLOCK_SIZE>>>(
                 nr_rays,
                 use_ray_t_exit,
                 ray_t_exit.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
@@ -102,7 +102,7 @@ std::tuple<torch::Tensor, torch::Tensor> VolumeRendering::volume_render_nerf_bac
     
 
     // TIME_START("volume_render_nerf_backward")
-    VolumeRenderingGPU::volume_render_nerf_backward<<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
+    VolumeRenderingGPU::volume_render_nerf_backward<<<blocks, BLOCK_SIZE>>>(
                 nr_rays,
                 use_ray_t_exit,
                 grad_pred_rgb.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
@@ -146,7 +146,7 @@ torch::Tensor VolumeRendering::compute_dt(const RaySamplesPacked& ray_samples_pa
 
 
 
-    VolumeRenderingGPU::compute_dt_gpu<<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
+    VolumeRenderingGPU::compute_dt_gpu<<<blocks, BLOCK_SIZE>>>(
                 nr_rays,
                 use_ray_t_exit,
                 ray_t_exit.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
@@ -182,7 +182,7 @@ std::tuple<torch::Tensor, torch::Tensor> VolumeRendering::cumprod_alpha2transmit
 
 
 
-    VolumeRenderingGPU::cumprod_alpha2transmittance_gpu<<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
+    VolumeRenderingGPU::cumprod_alpha2transmittance_gpu<<<blocks, BLOCK_SIZE>>>(
                 nr_rays,
                 ray_samples_packed.max_nr_samples, //useful for checking if the ray has samples higher the the max_nr_samples in which case we don't integrate
                 ray_samples_packed.ray_start_end_idx.packed_accessor32<int,2,torch::RestrictPtrTraits>(),
@@ -214,7 +214,7 @@ torch::Tensor VolumeRendering::integrate_with_weights(const RaySamplesPacked& ra
 
 
 
-    VolumeRenderingGPU::integrate_with_weights_gpu<<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
+    VolumeRenderingGPU::integrate_with_weights_gpu<<<blocks, BLOCK_SIZE>>>(
                 nr_rays,
                 ray_samples_packed.max_nr_samples, //useful for checking if the ray has samples higher the the max_nr_samples in which case we don't integrate
                 ray_samples_packed.ray_start_end_idx.packed_accessor32<int,2,torch::RestrictPtrTraits>(),
@@ -245,7 +245,7 @@ torch::Tensor VolumeRendering::sdf2alpha(const RaySamplesPacked& ray_samples_pac
 
 
 
-    VolumeRenderingGPU::sdf2alpha_gpu<<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
+    VolumeRenderingGPU::sdf2alpha_gpu<<<blocks, BLOCK_SIZE>>>(
                 nr_rays,
                 ray_samples_packed.max_nr_samples, //useful for checking if the ray has samples higher the the max_nr_samples in which case we don't integrate
                 ray_samples_packed.ray_start_end_idx.packed_accessor32<int,2,torch::RestrictPtrTraits>(),
@@ -286,7 +286,7 @@ std::tuple<torch::Tensor, torch::Tensor> VolumeRendering::sum_over_each_ray(cons
 
 
     if(val_dim==1){
-        VolumeRenderingGPU::sum_over_each_ray_gpu<1><<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
+        VolumeRenderingGPU::sum_over_each_ray_gpu<1><<<blocks, BLOCK_SIZE>>>(
                 nr_rays,
                 ray_samples_packed.max_nr_samples, //useful for checking if the ray has samples higher the the max_nr_samples in which case we don't integrate
                 ray_samples_packed.ray_start_end_idx.packed_accessor32<int,2,torch::RestrictPtrTraits>(),
@@ -298,7 +298,7 @@ std::tuple<torch::Tensor, torch::Tensor> VolumeRendering::sum_over_each_ray(cons
                 values_sum_stored_per_sample.packed_accessor32<float,2,torch::RestrictPtrTraits>()
             );
     }else if(val_dim==2){
-         VolumeRenderingGPU::sum_over_each_ray_gpu<2><<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
+         VolumeRenderingGPU::sum_over_each_ray_gpu<2><<<blocks, BLOCK_SIZE>>>(
                 nr_rays,
                 ray_samples_packed.max_nr_samples, //useful for checking if the ray has samples higher the the max_nr_samples in which case we don't integrate
                 ray_samples_packed.ray_start_end_idx.packed_accessor32<int,2,torch::RestrictPtrTraits>(),
@@ -310,7 +310,7 @@ std::tuple<torch::Tensor, torch::Tensor> VolumeRendering::sum_over_each_ray(cons
                 values_sum_stored_per_sample.packed_accessor32<float,2,torch::RestrictPtrTraits>()
             );
     }else if(val_dim==3){
-        VolumeRenderingGPU::sum_over_each_ray_gpu<3><<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
+        VolumeRenderingGPU::sum_over_each_ray_gpu<3><<<blocks, BLOCK_SIZE>>>(
                 nr_rays,
                 ray_samples_packed.max_nr_samples, //useful for checking if the ray has samples higher the the max_nr_samples in which case we don't integrate
                 ray_samples_packed.ray_start_end_idx.packed_accessor32<int,2,torch::RestrictPtrTraits>(),
@@ -322,7 +322,7 @@ std::tuple<torch::Tensor, torch::Tensor> VolumeRendering::sum_over_each_ray(cons
                 values_sum_stored_per_sample.packed_accessor32<float,2,torch::RestrictPtrTraits>()
             );
     }else if(val_dim==32){
-        VolumeRenderingGPU::sum_over_each_ray_gpu<32><<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
+        VolumeRenderingGPU::sum_over_each_ray_gpu<32><<<blocks, BLOCK_SIZE>>>(
                 nr_rays,
                 ray_samples_packed.max_nr_samples, //useful for checking if the ray has samples higher the the max_nr_samples in which case we don't integrate
                 ray_samples_packed.ray_start_end_idx.packed_accessor32<int,2,torch::RestrictPtrTraits>(),
@@ -358,7 +358,7 @@ torch::Tensor VolumeRendering::cumsum_over_each_ray(const RaySamplesPacked& ray_
 
 
 
-    VolumeRenderingGPU::cumsum_over_each_ray_gpu<<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
+    VolumeRenderingGPU::cumsum_over_each_ray_gpu<<<blocks, BLOCK_SIZE>>>(
                 nr_rays,
                 ray_samples_packed.max_nr_samples, //useful for checking if the ray has samples higher the the max_nr_samples in which case we don't integrate
                 ray_samples_packed.ray_start_end_idx.packed_accessor32<int,2,torch::RestrictPtrTraits>(),
@@ -391,7 +391,7 @@ torch::Tensor VolumeRendering::compute_cdf(const RaySamplesPacked& ray_samples_p
 
 
 
-    VolumeRenderingGPU::compute_cdf_gpu<<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
+    VolumeRenderingGPU::compute_cdf_gpu<<<blocks, BLOCK_SIZE>>>(
                 nr_rays,
                 ray_samples_packed.max_nr_samples, //useful for checking if the ray has samples higher the the max_nr_samples in which case we don't integrate
                 ray_samples_packed.ray_start_end_idx.packed_accessor32<int,2,torch::RestrictPtrTraits>(),
@@ -426,7 +426,7 @@ RaySamplesPacked VolumeRendering::importance_sample(const int nr_rays_valid, con
 
 
 
-    VolumeRenderingGPU::importance_sample_gpu<<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
+    VolumeRenderingGPU::importance_sample_gpu<<<blocks, BLOCK_SIZE>>>(
                 nr_rays,
                 ray_origins.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
                 ray_dirs.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
@@ -490,7 +490,7 @@ RaySamplesPacked VolumeRendering::combine_uniform_samples_with_imp(const torch::
 
 
 
-    VolumeRenderingGPU::combine_uniform_samples_with_imp_gpu<<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
+    VolumeRenderingGPU::combine_uniform_samples_with_imp_gpu<<<blocks, BLOCK_SIZE>>>(
                 nr_rays,
                 ray_origins.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
                 ray_dirs.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
@@ -551,7 +551,7 @@ torch::Tensor VolumeRendering::cumprod_alpha2transmittance_backward(const torch:
 
 
 
-    VolumeRenderingGPU::cumprod_alpha2transmittance_backward_gpu<<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
+    VolumeRenderingGPU::cumprod_alpha2transmittance_backward_gpu<<<blocks, BLOCK_SIZE>>>(
                 nr_rays,
                 ray_samples_packed.max_nr_samples, //useful for checking if the ray has samples higher the the max_nr_samples in which case we don't integrate
                 ray_samples_packed.ray_start_end_idx.packed_accessor32<int,2,torch::RestrictPtrTraits>(),
@@ -589,7 +589,7 @@ std::tuple<torch::Tensor, torch::Tensor> VolumeRendering::integrate_with_weights
 
 
 
-    VolumeRenderingGPU::integrate_with_weights_backward_gpu<<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
+    VolumeRenderingGPU::integrate_with_weights_backward_gpu<<<blocks, BLOCK_SIZE>>>(
                 nr_rays,
                 ray_samples_packed.max_nr_samples, //useful for checking if the ray has samples higher the the max_nr_samples in which case we don't integrate
                 ray_samples_packed.ray_start_end_idx.packed_accessor32<int,2,torch::RestrictPtrTraits>(),
@@ -628,7 +628,7 @@ torch::Tensor VolumeRendering::sum_over_each_ray_backward(const torch::Tensor& g
 
 
     if(val_dim==1){
-        VolumeRenderingGPU::sum_over_each_ray_backward_gpu<1><<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
+        VolumeRenderingGPU::sum_over_each_ray_backward_gpu<1><<<blocks, BLOCK_SIZE>>>(
                 nr_rays,
                 ray_samples_packed.max_nr_samples, //useful for checking if the ray has samples higher the the max_nr_samples in which case we don't integrate
                 ray_samples_packed.ray_start_end_idx.packed_accessor32<int,2,torch::RestrictPtrTraits>(),
@@ -642,7 +642,7 @@ torch::Tensor VolumeRendering::sum_over_each_ray_backward(const torch::Tensor& g
             );
 
     }else if(val_dim==2){
-         VolumeRenderingGPU::sum_over_each_ray_backward_gpu<2><<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
+         VolumeRenderingGPU::sum_over_each_ray_backward_gpu<2><<<blocks, BLOCK_SIZE>>>(
                 nr_rays,
                 ray_samples_packed.max_nr_samples, //useful for checking if the ray has samples higher the the max_nr_samples in which case we don't integrate
                 ray_samples_packed.ray_start_end_idx.packed_accessor32<int,2,torch::RestrictPtrTraits>(),
@@ -655,7 +655,7 @@ torch::Tensor VolumeRendering::sum_over_each_ray_backward(const torch::Tensor& g
                 grad_sample_values.packed_accessor32<float,2,torch::RestrictPtrTraits>()
             );
     }else if(val_dim==3){
-        VolumeRenderingGPU::sum_over_each_ray_backward_gpu<3><<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
+        VolumeRenderingGPU::sum_over_each_ray_backward_gpu<3><<<blocks, BLOCK_SIZE>>>(
                 nr_rays,
                 ray_samples_packed.max_nr_samples, //useful for checking if the ray has samples higher the the max_nr_samples in which case we don't integrate
                 ray_samples_packed.ray_start_end_idx.packed_accessor32<int,2,torch::RestrictPtrTraits>(),
