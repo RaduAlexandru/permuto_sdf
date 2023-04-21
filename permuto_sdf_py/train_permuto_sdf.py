@@ -450,10 +450,11 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
             #loss for empty space sdf            
             if hyperparams.use_occupancy_grid:
                 #highsdf just to avoice voxels becoming "occcupied" due to their sdf dropping to zero
-                offsurface_points=model_sdf.boundary_primitive.rand_points_inside(nr_points=1024)
-                sdf_rand, _=model_sdf( offsurface_points, iter_nr_for_anneal)
-                loss_offsurface_high_sdf=torch.exp(-1e2 * torch.abs(sdf_rand)).mean()
-                loss+=loss_offsurface_high_sdf*hyperparams.offsurface_weight
+                if phase.iter_nr%8==0:
+                    offsurface_points=model_sdf.boundary_primitive.rand_points_inside(nr_points=1024*8)
+                    sdf_rand, _=model_sdf( offsurface_points, iter_nr_for_anneal)
+                    loss_offsurface_high_sdf=torch.exp(-1e2 * torch.abs(sdf_rand)).mean()
+                    loss+=loss_offsurface_high_sdf*hyperparams.offsurface_weight
 
             #loss on lipshitz
             loss_lipshitz=model_rgb.mlp.lipshitz_bound_full()
@@ -468,7 +469,7 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
 
             with torch.set_grad_enabled(False):
                 #update occupancy
-                if phase.iter_nr%8==0 and hyperparams.use_occupancy_grid:
+                if phase.iter_nr%8==0 and phase.iter_nr<hyperparams.lr_milestones[0]*1.3 and hyperparams.use_occupancy_grid:
                     grid_centers_random, grid_center_indices=occupancy_grid.compute_random_sample_of_grid_points(256*256*4,True)
                     sdf_grid,_=model_sdf( grid_centers_random, iter_nr_for_anneal) 
                     occupancy_grid.update_with_sdf_random_sample(grid_center_indices, sdf_grid, model_rgb.volume_renderer_neus.get_last_inv_s(), 1e-4 )
