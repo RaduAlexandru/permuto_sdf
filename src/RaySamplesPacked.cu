@@ -90,7 +90,7 @@ void RaySamplesPacked::enqueue_getting_exact_nr_samples(){
     m_nr_samples_cpu_async_transfer = nr_samples_gpu.to(torch::kCPU, non_blocking, copy_flag);
     //create event to check when this transfer is finsished 
     m_event_copy_nr_samples = std::make_unique<at::cuda::CUDAEvent>();
-    m_event_copy_nr_samples->record();
+    m_event_copy_nr_samples->record(at::cuda::getCurrentCUDAStream());
     
 }
 int RaySamplesPacked::wait_and_get_exact_nr_samples(){
@@ -110,7 +110,7 @@ void RaySamplesPacked::enqueue_getting_exact_nr_rays_valid(){
     m_nr_rays_valid_cpu_async_transfer = nr_rays_valid_gpu.to(torch::kCPU, non_blocking, copy_flag);
     //create event to check when this transfer is finsished 
     m_event_copy_nr_rays_valid = std::make_unique<at::cuda::CUDAEvent>();
-    m_event_copy_nr_rays_valid->record();
+    m_event_copy_nr_rays_valid->record(at::cuda::getCurrentCUDAStream());
 }
 
 int RaySamplesPacked::wait_and_get_exact_nr_rays_valid(){
@@ -134,7 +134,7 @@ RaySamplesPacked RaySamplesPacked::compact_given_exact_nr_samples(const int exac
     const dim3 blocks = { (unsigned int)div_round_up(m_nr_rays, BLOCK_SIZE), 1, 1 }; 
 
 
-    RaySamplesPackedGPU::compact_to_valid_samples_gpu<<<blocks, BLOCK_SIZE>>>(
+    RaySamplesPackedGPU::compact_to_valid_samples_gpu<<<blocks, BLOCK_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
                 m_nr_rays,
                 this->samples_pos.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
                 this->samples_pos_4d.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
