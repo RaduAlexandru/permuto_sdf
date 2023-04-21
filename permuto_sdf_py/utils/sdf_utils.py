@@ -409,8 +409,8 @@ def importance_sampling_sdf_model(model_sdf, ray_samples_packed, nr_rays_valid, 
 	ray_samples_packed=ray_samples_combined#swap
 	# ray_samples_packed=ray_samples_packed.compact_to_valid_samples() #still need to get the valid ones because we have less samples than allocated
 	#compact with known samples 
-	nr_samples_after_compaction=nr_samples_uniform+nr_rays_valid*nr_samples_imp_sampling
-	ray_samples_packed=ray_samples_packed.compact_given_exact_nr_samples(nr_samples_after_compaction)
+	# nr_samples_after_compaction=nr_samples_uniform+nr_rays_valid*nr_samples_imp_sampling
+	# ray_samples_packed=ray_samples_packed.compact_given_exact_nr_samples(nr_samples_after_compaction)
 	####SECOND ITER
 	inv_s_multiplier=2.0
 	sdf_sampled_packed=ray_samples_packed.samples_sdf #we already combined them and have the sdf
@@ -429,8 +429,8 @@ def importance_sampling_sdf_model(model_sdf, ray_samples_packed, nr_rays_valid, 
 	ray_samples_packed=ray_samples_combined#swap
 	# ray_samples_packed=ray_samples_packed.compact_to_valid_samples() #still need to get the valid ones because we have less samples than allocated
 	#compact with known samples 
-	nr_samples_after_compaction=nr_samples_uniform+nr_rays_valid*nr_samples_imp_sampling*2
-	ray_samples_packed=ray_samples_packed.compact_given_exact_nr_samples(nr_samples_after_compaction)
+	# nr_samples_after_compaction=nr_samples_uniform+nr_rays_valid*nr_samples_imp_sampling*2
+	# ray_samples_packed=ray_samples_packed.compact_given_exact_nr_samples(nr_samples_after_compaction)
 
 	return ray_samples_packed
 
