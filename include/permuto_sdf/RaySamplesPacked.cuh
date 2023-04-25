@@ -15,6 +15,7 @@ public:
     void remove_sdf();
     int compute_exact_nr_samples();
     void initialize_with_one_sample_per_ray(const torch::Tensor one_sample_per_ray, const torch::Tensor dirs); //usefult for creating samples when doing sphere tracing in which we have only one sample per ray. And then we can pass around this raysamples packed even if its compacted or not
+    static torch::Tensor compute_per_sample_ray_idx(const torch::Tensor& ray_start_end_idx, const int nr_samples); //This function takes the ray_start_end_idx and for each row ( where a row is a start and index of the samples) writes the index of the ray to those samples. So if the row 0 of the ray_start_end_idx is [100,106], then we write into rows 100,101,102,106 the value 0
         
 
     //we keep the atributes in different tensors because it makes it easier to encode the directions later by just applying SH over the samples_dirs

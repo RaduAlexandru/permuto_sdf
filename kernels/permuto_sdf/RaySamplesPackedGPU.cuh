@@ -81,6 +81,42 @@ compact_to_valid_samples_gpu(
 }
 
 
+__global__ void 
+compute_per_sample_ray_idx_gpu(
+    const int nr_rays,
+    const int nr_samples,
+    const torch::PackedTensorAccessor32<int,2,torch::RestrictPtrTraits> ray_start_end_idx,
+    //output
+    torch::PackedTensorAccessor32<int,1,torch::RestrictPtrTraits> per_sample_ray_idx
+    ) {
+
+    int idx = blockIdx.x * blockDim.x + threadIdx.x; //each thread will deal with a new value
+
+    if(idx>=nr_rays){ //don't go out of bounds
+        return;
+    }
+
+
+    //get the indexes where this ray starts and end 
+    int in_idx_start=ray_start_end_idx[idx][0];
+    int in_idx_end=ray_start_end_idx[idx][1];
+    int nr_samples_per_ray=in_idx_end-in_idx_start; 
+
+    if(nr_samples_per_ray>0){
+        for (int i=0; i<nr_samples_per_ray; i++){
+            per_sample_ray_idx[in_idx_start+i]=idx;
+            if(in_idx_start+i>=nr_samples){
+                printf("we are writing outside of bounds!");
+            }
+        }
+    }
+
+
+}
+
+
+
+
 
 
 

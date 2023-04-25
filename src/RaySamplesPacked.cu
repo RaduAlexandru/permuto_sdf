@@ -121,6 +121,30 @@ void RaySamplesPacked::initialize_with_one_sample_per_ray(const torch::Tensor on
 
 }
 
+torch::Tensor RaySamplesPacked::compute_per_sample_ray_idx(const torch::Tensor& ray_start_end_idx, const int nr_samples){
+
+    int nr_rays=ray_start_end_idx.size(0);
+
+    torch::Tensor per_sample_ray_idx=torch::empty({ nr_samples },  torch::dtype(torch::kInt32).device(torch::kCUDA, 0)  );
+    
+
+    const dim3 blocks = { (unsigned int)div_round_up(nr_rays, BLOCK_SIZE), 1, 1 }; 
+
+
+    RaySamplesPackedGPU::compute_per_sample_ray_idx_gpu<<<blocks, BLOCK_SIZE>>>(
+                nr_rays,
+                nr_samples, //just for sanity checking
+                ray_start_end_idx.packed_accessor32<int,2,torch::RestrictPtrTraits>(),
+                //output
+                per_sample_ray_idx.packed_accessor32<int,1,torch::RestrictPtrTraits>()
+            );
+
+
+
+    return per_sample_ray_idx;
+
+}
+
 void RaySamplesPacked::set_sdf(const torch::Tensor& sdf){
     samples_sdf=sdf.view({-1,1});
     has_sdf=true;

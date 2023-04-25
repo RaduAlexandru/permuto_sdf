@@ -13,6 +13,7 @@ from permuto_sdf_py.utils.common_utils import map_range_val
 from permuto_sdf_py.utils.common_utils import leaky_relu_init
 from permuto_sdf_py.utils.common_utils import apply_weight_init_fn
 from permuto_sdf import PermutoSDF
+from permuto_sdf import RaySamplesPacked
 from permuto_sdf_py.utils.common_utils import TIME_START
 from permuto_sdf_py.utils.common_utils import TIME_END
 
@@ -710,12 +711,20 @@ class Colorcal(torch.nn.Module):
 
 
         #get the nr of samples per_ray
-        nr_samples_per_ray=ray_start_end_idx[:,1:2]-ray_start_end_idx[:,0:1] 
+        # nr_samples_per_ray=ray_start_end_idx[:,1:2]-ray_start_end_idx[:,0:1] 
         #repeat each weight and each bias, as many samples as we have for each ray
-        weights_per_pixel=torch.repeat_interleave(weights_per_pixel, nr_samples_per_ray.view(-1), dim=0, output_size=rgb_samples.shape[0])
-        bias_per_pixel=torch.repeat_interleave(bias_per_pixel, nr_samples_per_ray.view(-1), dim=0, output_size=rgb_samples.shape[0])
+        # weights_per_pixel_repeted=torch.repeat_interleave(weights_per_pixel, nr_samples_per_ray.view(-1), dim=0, output_size=rgb_samples.shape[0])
+        # bias_per_pixel_repeted=torch.repeat_interleave(bias_per_pixel, nr_samples_per_ray.view(-1), dim=0, output_size=rgb_samples.shape[0])
+        # rgb_samples=rgb_samples*weights_per_pixel_repeted+bias_per_pixel_repeted
 
-        rgb_samples=rgb_samples*weights_per_pixel+bias_per_pixel
+        #attempt to fix the bug
+        #the weights are biases are now per pixels but we want them to be per sample
+        #recall that the ray_start_end_idx has per each ray(pixel the start and end idx of the samples). So for ray 0, you may have samples between indices 1000 and 1006 for example. So we want to put the selected weights and biases at indices 1000, 1001...1006
+        per_sample_ray_idx=RaySamplesPacked.compute_per_sample_ray_idx(ray_start_end_idx, rgb_samples.shape[0])
+        weights_per_sample=torch.index_select(weights_per_pixel, 0, per_sample_ray_idx.long())
+        bias_per_sample=torch.index_select(bias_per_pixel, 0, per_sample_ray_idx.long())
+        rgb_samples=rgb_samples*weights_per_sample+bias_per_sample
+
 
         return rgb_samples
 
