@@ -31,18 +31,22 @@ torch.set_default_tensor_type(torch.cuda.FloatTensor)
 
 parser = argparse.ArgumentParser(description='Train sdf and color')
 parser.add_argument('--dataset', default="custom", help='Dataset name which can also be custom in which case the user has to provide their own data')
+parser.add_argument('--dataset_path', default="/media/rosu/Data/data/permuto_sdf_data/easy_pbr_renders/head/", help='Dataset path')
 parser.add_argument('--with_mask', action='store_true', help="Set this to true in order to train with a mask")
 parser.add_argument('--exp_info', default="", help='Experiment info string useful for distinguishing one experiment for another')
 parser.add_argument('--no_viewer', action='store_true', help="Set this to true in order disable the viewer")
+parser.add_argument('--scene_scale', default=0.9, type=float, help='Scale of the scene so that it fits inside the unit sphere')
+parser.add_argument('--scene_translation', default=[0,0,0], type=float, nargs=3, help='Translation of the scene so that it fits inside the unit sphere')
+parser.add_argument('--img_subsample', default=1.0, type=float, help="The higher the subsample value, the smaller the images are. Useful for low vram")
 args = parser.parse_args()
 with_viewer=not args.no_viewer
 
 
 #MODIFY these for your dataset!
-SCENE_SCALE=0.9
-SCENE_TRANSLATION=[0,0,0]
-IMG_SUBSAMPLE_FACTOR=1.0 #subsample the image to lower resolution in case you are running on a low VRAM GPU. The higher this number, the smaller the images
-DATASET_PATH="/media/rosu/Data/data/permuto_sdf_data/easy_pbr_renders/head/" #point this to wherever you downloaded the easypbr_data (see README.md for download link)
+SCENE_SCALE=args.scene_scale
+SCENE_TRANSLATION=args.scene_translation
+IMG_SUBSAMPLE_FACTOR=args.img_subsample #subsample the image to lower resolution in case you are running on a low VRAM GPU. The higher this number, the smaller the images
+DATASET_PATH=args.dataset_path #point this to wherever you downloaded the easypbr_data (see README.md for download link)
  
 def create_custom_dataset():
     #CREATE CUSTOM DATASET---------------------------
@@ -69,9 +73,18 @@ def create_custom_dataset():
         frame=Frame()
         img=Mat(os.path.join(path_imgs,img_name))
         img=img.to_cv32f()
+        #get rgb part and possibly the alpha as a mask
         if img.channels()==4:
-            img=img.rgba2rgb()
-        frame.rgb_32f=img
+            img_rgb=img.rgba2rgb()
+        else:
+            img_rgb=img
+        #get the alpha a a mask if necessary
+        if args.with_mask and img.channels()==4:
+            img_mask=img.get_channel(3)
+            frame.mask=img_mask
+        if args.with_mask and not img.channels()==4:
+            exit("You are requiring to use a foreground-background mask which should be in the alpha channel of the image. But the image does not have 4 channels")
+        frame.rgb_32f=img_rgb 
 
         #img_size
         frame.width=img.cols
