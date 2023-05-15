@@ -286,10 +286,10 @@ class SDF(torch.nn.Module):
 
         dot=(normals*normals_shifted).sum(dim=-1, keepdim=True)
         #the dot would assign low weight importance to normals that are almost the same, and increasing error the more they deviate. So it's something like and L2 loss. But we want a L1 loss so we get the angle, and then we map it to range [0,1]
-        angle=torch.acos(torch.clamp(dot, -1.0+1e-6, 1.0-1e-6)) #goes to range 0 when the angle is the same and 2pi when is opposite
+        angle=torch.acos(torch.clamp(dot, -1.0+1e-6, 1.0-1e-6)) #goes to range 0 when the angle is the same and pi when is opposite
 
 
-        curvature=angle/(2.0*math.pi) #map to [0,1 range]
+        curvature=angle/math.pi #map to [0,1 range]
 
         return sdf_shifted, curvature
 

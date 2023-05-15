@@ -80,7 +80,7 @@ class HyperParamsPermutoSDF:
     nr_iter_sphere_fit=4000*s_mult                      #nr iters for training with sphere SDF
     forced_variance_finish_iter=35000*s_mult            #nr iters until the SDF to density transform is sharp
     eikonal_weight=0.04
-    curvature_weight=1.3
+    curvature_weight=0.65
     lipshitz_weight=3e-6
     mask_weight=0.1
     offsurface_weight=1e-4
@@ -359,7 +359,7 @@ def train(args, config_path, hyperparams, train_params, loader_train, experiment
             if global_weight_curvature>0.0:
             # if True:
                 sdf_shifted, sdf_curvature=model_sdf.get_sdf_and_curvature_1d_precomputed_gradient_normal_based( fg_ray_samples_packed.samples_pos, sdf_gradients, iter_nr_for_anneal)
-                loss_curvature=(torch.clamp(sdf_curvature,max=0.5).abs().view(-1)   ).mean() 
+                loss_curvature=sdf_curvature.mean() 
                 loss+=loss_curvature* hyperparams.curvature_weight*global_weight_curvature
 
 
