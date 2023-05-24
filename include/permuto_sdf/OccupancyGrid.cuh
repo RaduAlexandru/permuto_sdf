@@ -11,6 +11,10 @@
 
 #include "permuto_sdf/RaySamplesPacked.cuh"
 
+namespace easy_pbr{
+    class Mesh;
+}
+
 
 class OccupancyGrid{
 public:
@@ -29,6 +33,7 @@ public:
     
 
     torch::Tensor compute_grid_points(const bool randomize_position); //makes point at the position where the values lives. So actually it return the corners of the cubes because the values live at the corners
+    std::shared_ptr<easy_pbr::Mesh> create_cubes_for_occupied_voxels(); //makes one cube for each occupied voxel, useful for visualization
     std::tuple<torch::Tensor,torch::Tensor> compute_random_sample_of_grid_points(const int nr_of_voxels_to_select, const bool randomize_position);
     RaySamplesPacked compute_samples_in_occupied_regions(const torch::Tensor& ray_origins, const torch::Tensor& ray_dirs, const torch::Tensor& ray_t_entry, const torch::Tensor& ray_t_exit, const float min_dist_between_samples, const int max_nr_samples_per_ray, const bool jitter_samples); //goes through the occupies regions and creates samples 
     RaySamplesPacked compute_first_sample_start_of_occupied_regions(const torch::Tensor& ray_origins, const torch::Tensor& ray_dirs, const torch::Tensor& ray_t_entry, const torch::Tensor& ray_t_exit); //creates one sample only at the beggining of the occupied space, useful for sphere tracing

@@ -13,6 +13,7 @@
 #include "permuto_sdf/RaySamplesPacked.cuh"
 #include "permuto_sdf/TrainParams.h"
 #include "permuto_sdf/NGPGui.h"
+#include "easy_pbr/Mesh.h"
 
 #include "easy_pbr/Viewer.h"
 
@@ -67,6 +68,7 @@ PYBIND11_MODULE(permuto_sdf, m) {
     .def("get_nr_voxels", &OccupancyGrid::get_nr_voxels ) 
     .def("get_nr_voxels_per_dim", &OccupancyGrid::get_nr_voxels_per_dim ) 
     .def("compute_grid_points", &OccupancyGrid::compute_grid_points ) 
+    .def("create_cubes_for_occupied_voxels", &OccupancyGrid::create_cubes_for_occupied_voxels ) 
     .def("compute_random_sample_of_grid_points", &OccupancyGrid::compute_random_sample_of_grid_points ) 
     .def("check_occupancy", &OccupancyGrid::check_occupancy ) 
     .def("update_with_density", &OccupancyGrid::update_with_density ) 
