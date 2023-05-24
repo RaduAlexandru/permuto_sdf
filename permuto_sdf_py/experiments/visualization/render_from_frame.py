@@ -41,8 +41,10 @@ from permuto_sdf_py.utils.common_utils import create_dataloader
 from permuto_sdf_py.utils.common_utils import create_bb_for_dataset
 from permuto_sdf_py.utils.common_utils import nchw2lin
 from permuto_sdf_py.utils.common_utils import lin2nchw
+from permuto_sdf_py.utils.common_utils import linear2color_corr
 from permuto_sdf_py.utils.permuto_sdf_utils import load_from_checkpoint
 from permuto_sdf_py.train_permuto_sdf import run_net_in_chunks
+from permuto_sdf_py.train_permuto_sdf import run_net_sphere_traced
 from permuto_sdf_py.train_permuto_sdf import HyperParamsPermutoSDF
 import permuto_sdf_py.paths.list_of_checkpoints as list_chkpts
 import permuto_sdf_py.paths.list_of_training_scenes as list_scenes
@@ -280,6 +282,14 @@ def run():
 
 
 
+    #show occupancy grid
+    if occupancy_grid:
+        occ=occupancy_grid.create_cubes_for_occupied_voxels()
+        Scene.show(occ,"occ")
+    
+
+
+
     while True:
         view.update()
 
@@ -318,8 +328,13 @@ def run():
         chunk_size=ngp_gui.m_chunk_size
 
         #from model-----------
-        pred_rgb_img, pred_rgb_bg_img, pred_normals_img, pred_weights_sum_img=run_net_in_chunks(frame_to_render, chunk_size, args, hyperparams, model_sdf, model_rgb, model_bg, occupancy_grid, iter_nr_for_anneal, cos_anneal_ratio, hyperparams.forced_variance_finish) 
+        use_volumetric_render=False
+        if use_volumetric_render: 
+            pred_rgb_img, pred_rgb_bg_img, pred_normals_img, pred_weights_sum_img=run_net_in_chunks(frame_to_render, chunk_size, args, hyperparams, model_sdf, model_rgb, model_bg, occupancy_grid, iter_nr_for_anneal, cos_anneal_ratio, hyperparams.forced_variance_finish) 
+        else:
+            pred_rgb_img, pred_rgb_bg_img, pred_normals_img, pred_weights_sum_img=run_net_sphere_traced(frame_to_render, args, hyperparams, model_sdf, model_rgb, model_bg, occupancy_grid, iter_nr_for_anneal, cos_anneal_ratio, hyperparams.forced_variance_finish,  nr_sphere_traces=15, sdf_multiplier=0.9, sdf_converged_tresh=0.0002)
         #view rgb
+        # pred_rgb_img=linear2color_corr(pred_rgb_img.cpu(), dim=1).clamp(0, 1).float().cuda()
         pred_rgba_img=torch.cat([pred_rgb_img,pred_weights_sum_img],1)
         pred_img_mat=tensor2mat(pred_rgba_img.detach()).rgba2bgra().to_cv8u()
         Gui.show(pred_img_mat,"pred_img_mat"+str(ngp_gui.m_render_full_img))
